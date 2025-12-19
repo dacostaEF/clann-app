@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "CLÃ",
+    "slug": "cla-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cla.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      },
+      "package": "com.cla.app"
+    },
+    "web": {
+      "favicon": "./LogoClann_favicon.png",
+      "themeColor": "#000000"
+    },
+    "plugins": {
+      "expo-camera": {
+        "cameraPermission": "Permitir $(PRODUCT_NAME) acessar sua câmera para escanear QR Codes"
+      }
+    }
+  }
+}
+
+
+
+
+
+

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#000000">
+    <title>Convite CLANN</title>
+    <link rel="icon" type="image/png" href="../LogoClann_favicon.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            font-size: 32px;
+            margin-bottom: 12px;
+            text-align: center;
+            color: #4a90e2;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #aaaaaa;
+            margin-bottom: 40px;
+            font-size: 16px;
+        }
+        
+        .card {
+            background: #1a1a1a;
+            border: 2px solid #4CAF50;
+            border-radius: 12px;
+            padding: 30px;
+            margin-top: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card h2 {
+            color: #4CAF50;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+        
+        .card p {
+            color: #cccccc;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .meta {
+            color: #888888;
+            font-size: 0.9em;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #333333;
+        }
+        
+        .meta span {
+            color: #4a90e2;
+            font-weight: 600;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 600;
+            margin-top: 24px;
+            width: 100%;
+            transition: background 0.3s ease;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        button:disabled {
+            background: #2a2a2a;
+            color: #666666;
+            cursor: not-allowed;
+        }
+        
+        .info-box {
+            background: #1a1a2e;
+            border-left: 4px solid #4a90e2;
+            padding: 16px;
+            margin-top: 20px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            color: #aaaaaa;
+        }
+        
+        .info-box strong {
+            color: #4a90e2;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #888888;
+            font-size: 16px;
+            padding: 40px;
+        }
+        
+        .error {
+            color: #f87171;
+            background: #1a1a1a;
+            border: 2px solid #f87171;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Convite CLANN</h1>
+        <p class="subtitle">Você recebeu um convite para um espaço de comunicação soberana.</p>
+        
+        <div id="invite-info" class="loading">
+            Carregando informações do convite...
+        </div>
+        
+        <div id="success-view" style="display:none;">
+            <div class="card">
+                <h2 id="clan-name"></h2>
+                <p id="clan-objective"></p>
+                <div class="meta">
+                    Nível de Segurança: <span id="security-tier"></span><br>
+                    Convite válido até: <span id="expires-at"></span>
+                </div>
+                <button id="enter-button">➡️ Acessar este CLANN</button>
+                <div class="info-box">
+                    <strong>Como funciona:</strong> Ao clicar, você criará uma <strong>identidade local (Totem)</strong> e um <strong>PIN</strong> apenas no seu dispositivo. Nada é enviado a nenhum servidor.
+                </div>
+            </div>
+        </div>
+        
+        <div id="error-view" style="display:none;">
+            <div class="error">
+                <div class="error-icon">❌</div>
+                <p>Convite inválido, expirado ou não encontrado.</p>
+                <p style="margin-top: 12px; font-size: 0.9em; color: #888;">
+                    Verifique se o código do convite está correto.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * DOSE 1 - Página de Convite CLANN
+         * Extrai código da query string e busca dados no Gateway
+         */
+        
+        // 1. Pega o código do convite da query string da URL
+        function getInviteCodeFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('code');
+        }
+
+        // 2. Busca os dados do CLANN no Gateway
+        async function fetchInvite(code) {
+            try {
+                // ATENÇÃO: Substitua localhost:3001 pelo IP do seu gateway se testar em outro dispositivo
+                const gatewayUrl = 'http://localhost:3001';
+                const response = await fetch(`${gatewayUrl}/invite/${code}`);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || 'Convite não encontrado');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('Erro ao buscar convite:', error);
+                return null;
+            }
+        }
+
+        // 3. Processa a resposta e exibe
+        async function init() {
+            const inviteCode = getInviteCodeFromURL();
+            
+            if (!inviteCode || inviteCode.trim() === '') {
+                showError('Código de convite não fornecido');
+                return;
+            }
+
+            const inviteData = await fetchInvite(inviteCode);
+
+            // NORMALIZAÇÃO DO CONTRATO DE DADOS ENTRE GATEWAY E FRONTEND
+            if (inviteData && (inviteData.clannId || inviteData.clan_id)) {
+
+                const normalizedInvite = {
+                    clannId: inviteData.clannId || inviteData.clan_id,
+                    clanName: inviteData.clanName || 'CLANN',
+                    objective: inviteData.objective || 'Comunicação soberana',
+                    securityTier: inviteData.securityTier || inviteData.role || 'free',
+                    expiresAt: inviteData.expiresAt || inviteData.expires_at
+                };
+
+                document.getElementById('clan-name').textContent = normalizedInvite.clanName;
+                document.getElementById('clan-objective').textContent = normalizedInvite.objective;
+                document.getElementById('security-tier').textContent =
+                    normalizedInvite.securityTier.toUpperCase();
+
+                if (normalizedInvite.expiresAt) {
+                    const expiresDate = new Date(normalizedInvite.expiresAt);
+                    document.getElementById('expires-at').textContent =
+                        expiresDate.toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric'
+                        });
+                } else {
+                    document.getElementById('expires-at').textContent = 'Sem expiração';
+                }
+
+                document.getElementById('invite-info').style.display = 'none';
+                document.getElementById('success-view').style.display = 'block';
+
+                document.getElementById('enter-button').onclick = () => {
+                    const params = new URLSearchParams({
+                        clannId: normalizedInvite.clannId,
+                        clanName: normalizedInvite.clanName,
+                        objective: normalizedInvite.objective,
+                        securityTier: normalizedInvite.securityTier,
+                        source: 'invite'
+                    });
+
+                    window.location.href =
+                        `http://localhost:8081/#/welcome?${params.toString()}`;
+                };
+
+            } else {
+                showError('Convite inválido ou não reconhecido');
+            }
+        }
+
+        function showError(message) {
+            document.getElementById('invite-info').style.display = 'none';
+            document.getElementById('error-view').style.display = 'block';
+            
+            // Atualiza mensagem de erro se fornecida
+            if (message) {
+                const errorView = document.getElementById('error-view');
+                const errorText = errorView.querySelector('p');
+                if (errorText) {
+                    errorText.textContent = message;
+                }
+            }
+        }
+
+        // Inicia o processo quando a página carrega
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
+
