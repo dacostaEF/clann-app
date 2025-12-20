@@ -29,11 +29,27 @@
       "favicon": "./LogoClann_favicon.png",
       "themeColor": "#000000"
     },
-    "plugins": {
-      "expo-camera": {
-        "cameraPermission": "Permitir $(PRODUCT_NAME) acessar sua câmera para escanear QR Codes"
-      }
+    "plugins": [
+      [
+    "expo-camera",
+    {
+      "cameraPermission": "Permitir $(PRODUCT_NAME) acessar sua câmera para escanear QR Codes"
     }
+  ]
+]
+
+
+
+
+
+
+
+
+
+
+
+
+    
   }
 }
 
