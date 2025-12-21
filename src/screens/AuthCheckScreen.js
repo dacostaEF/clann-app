@@ -3,24 +3,6 @@ import { View, ActivityIndicator, StyleSheet, Platform, Linking } from 'react-na
 import { useNavigation } from '@react-navigation/native';
 import { useTotem, TotemState } from '../context/TotemContext';
 
-// Polyfill para web usando localStorage (mesmo padrão do projeto)
-let SecureStore;
-if (Platform.OS === 'web') {
-  SecureStore = {
-    async setItemAsync(key, value) {
-      localStorage.setItem(key, value);
-    },
-    async getItemAsync(key) {
-      return localStorage.getItem(key);
-    },
-    async deleteItemAsync(key) {
-      localStorage.removeItem(key);
-    },
-  };
-} else {
-  SecureStore = require('expo-secure-store');
-}
-
 export default function AuthCheckScreen() {
   const navigation = useNavigation();
   const { totemState, loading: totemLoading } = useTotem();
@@ -80,17 +62,7 @@ export default function AuthCheckScreen() {
     switch (totemState) {
 
       case TotemState.NEEDS_PIN:
-        // Verificar se há flag para deferir PIN no primeiro acesso
-        SecureStore.getItemAsync('CLANN_DEFER_PIN_ONCE').then((flag) => {
-          if (flag === '1') {
-            // Consumir flag e navegar para Home sem pedir PIN
-            SecureStore.deleteItemAsync('CLANN_DEFER_PIN_ONCE');
-            navigation.replace('Home');
-          } else {
-            // Fluxo normal: pedir criação de PIN
-            navigation.replace('CreatePin');
-          }
-        });
+        navigation.replace('CreatePin');
         break;
 
       case TotemState.READY:
