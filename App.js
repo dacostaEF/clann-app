@@ -147,7 +147,11 @@ function AppNavigator() {
         <Stack.Screen name="AuthCheck" component={AuthCheckScreen} />
 
         {/* Gate Page - Orientação para visitantes sem convite */}
-        <Stack.Screen name="GatePage" component={GatePageScreen} />
+        <Stack.Screen
+          name="GatePage"
+          component={GatePageScreen}
+          options={{ title: 'CLANN APP' }}
+        />
 
         {/* Onboarding */}
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
