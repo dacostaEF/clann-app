@@ -18,6 +18,25 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { loadTotemSecure } from '../storage/secureStore';
+import { Platform } from 'react-native';
+
+// Polyfill para web usando localStorage (mesmo padrão do projeto)
+let SecureStore;
+if (Platform.OS === 'web') {
+  SecureStore = {
+    async setItemAsync(key, value) {
+      localStorage.setItem(key, value);
+    },
+    async getItemAsync(key) {
+      return localStorage.getItem(key);
+    },
+    async deleteItemAsync(key) {
+      localStorage.removeItem(key);
+    },
+  };
+} else {
+  SecureStore = require('expo-secure-store');
+}
 
 const MAX_ATTEMPTS = 5;
 const LOCK_DURATION = 30 * 1000; // 30 segundos
@@ -84,7 +103,7 @@ export default function VerifySeedScreen({ navigation, route }) {
     }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (!input.trim()) {
       Alert.alert('Atenção', 'Digite a frase de recuperação completa');
       return;
@@ -101,9 +120,14 @@ export default function VerifySeedScreen({ navigation, route }) {
 
     if (correct) {
       setIsCorrect(true);
-      // Navega para próxima tela após um breve delay
+      // Salva flag para deferir PIN no primeiro acesso
+      await SecureStore.setItemAsync('CLANN_DEFER_PIN_ONCE', '1');
+      // Navega direto para Home sem exigir PIN no primeiro acesso
       setTimeout(() => {
-        navigation.navigate('CreatePin');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Home' }],
+        });
       }, 1000);
     } else {
       setIsCorrect(false);
