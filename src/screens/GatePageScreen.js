@@ -50,20 +50,20 @@ export default function GatePageScreen() {
             />
 
             {/* Título principal */}
-            <Text style={styles.title}>CLANN é um ambiente privado.</Text>
+            <Text style={styles.title}>CLANN — Comunicação Corporativa Soberana</Text>
 
             {/* Subtítulo */}
             <Text style={styles.subtitle}>
-              Aqui, conversas pertencem às pessoas — não a plataformas, empresas ou governos.
+              Controle total sobre dados estratégicos. Sem servidores centrais. Sem intermediários.
             </Text>
 
             {/* Bloco de orientação */}
             <View style={styles.infoBlock}>
-              <Text style={styles.infoTitle}>Antes de continuar, é importante saber:</Text>
+              <Text style={styles.infoTitle}>Arquitetura de Segurança</Text>
               <View style={styles.infoList}>
-                <Text style={styles.infoItem}>O CLANN não é público</Text>
-                <Text style={styles.infoItem}>O acesso acontece por convite</Text>
-                <Text style={styles.infoItem}>A identidade fica no seu dispositivo</Text>
+                <Text style={styles.infoItem}>✓ Rede privada por convite</Text>
+                <Text style={styles.infoItem}>✓ Criptografia ponta-a-ponta descentralizada</Text>
+                <Text style={styles.infoItem}>✓ Identidade soberana vinculada ao dispositivo</Text>
               </View>
             </View>
 
@@ -74,7 +74,7 @@ export default function GatePageScreen() {
                 onPress={handleHaveInvite}
                 activeOpacity={0.8}
               >
-                <Text style={styles.buttonText}>Tenho um convite</Text>
+                <Text style={styles.buttonText}>Acessar com Convite</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -83,15 +83,12 @@ export default function GatePageScreen() {
                 activeOpacity={0.8}
               >
                 <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
-                  Quero criar um CLANN
+                  Requisitar Acesso Corporativo
                 </Text>
               </TouchableOpacity>
+              <Text style={styles.microcopy}>Acesso sujeito à aprovação.</Text>
             </View>
 
-            {/* Nota discreta no rodapé */}
-            <Text style={styles.footerNote}>
-              Se você chegou aqui por curiosidade, este talvez não seja o lugar certo — e está tudo bem.
-            </Text>
           </View>
         </ScrollView>
       </LinearGradient>
@@ -191,13 +188,12 @@ const styles = StyleSheet.create({
   buttonTextSecondary: {
     color: '#4a90e2',
   },
-  footerNote: {
-    fontSize: 12,
+  microcopy: {
+    fontSize: 11,
     color: '#666666',
     textAlign: 'center',
+    marginTop: 8,
     fontStyle: 'italic',
-    paddingHorizontal: 32,
-    lineHeight: 18,
   },
 });
 
