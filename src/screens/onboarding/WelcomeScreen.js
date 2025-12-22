@@ -14,6 +14,9 @@ import {
   Linking,
   Alert,
   ActivityIndicator,
+  Image,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -29,6 +32,10 @@ export default function WelcomeScreen() {
   const [clannParams, setClannParams] = useState(null);
   const [status, setStatus] = useState('');
   const [processing, setProcessing] = useState(false);
+  
+  // Detectar se é mobile (width < 768px)
+  const windowWidth = Dimensions.get('window').width;
+  const isMobile = windowWidth < 768;
 
   useEffect(() => {
     // DOSE 2: Verificar se há parâmetros de convite na URL
@@ -222,47 +229,118 @@ export default function WelcomeScreen() {
         colors={['#000000', '#1a1a2e', '#16213e']}
         style={styles.gradient}
       >
-        <View style={styles.content}>
-          <View style={styles.textContainer}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.content, isMobile && styles.contentMobile]}>
+            {/* Navegação de retorno */}
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.backButtonText}>← Voltar</Text>
+            </TouchableOpacity>
+
+            {/* Logo CLANN discreta */}
+            <Image
+              source={require('../../../LogoClann.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+
+            {/* Título principal */}
             <Text style={styles.title}>CLÃ</Text>
-            <Text style={styles.subtitle}>Onde o grupo governa</Text>
-            <Text style={styles.subtitle}>Onde a privacidade é lei</Text>
-          </View>
 
-          {/* DOSE 2: Mostrar status de processamento de convite */}
-          {status ? (
-            <View style={styles.statusContainer}>
-              {processing && <ActivityIndicator size="small" color="#4a90e2" style={{ marginRight: 8 }} />}
-              <Text style={styles.statusText}>{status}</Text>
-            </View>
-          ) : null}
+            {/* Subtítulo */}
+            <Text style={styles.subtitle}>Identidade Anônima por Design</Text>
 
-          {/* DOSE 2: Mostrar informações do convite */}
-          {clannParams && (
-            <View style={styles.clannInfoContainer}>
-              <Text style={styles.clannInfoTitle}>CLANN ID: {clannParams.clannId}</Text>
-              {clannParams.clanName && (
-                <Text style={styles.clannInfoText}>Nome: {clannParams.clanName}</Text>
-              )}
-              {clannParams.objective && (
-                <Text style={styles.clannInfoText}>Objetivo: {clannParams.objective}</Text>
-              )}
-              <Text style={styles.clannInfoText}>
-                Origem: {clannParams.source === 'invite' ? 'Convite' : 'Acesso direto'}
+            {/* Bloco 1 - O que é o Totem? */}
+            <View style={styles.textBlock}>
+              <Text style={styles.blockTitle}>O que é o Totem?</Text>
+              <Text style={styles.blockText}>
+                Seu Totem é uma identidade criptográfica anônima, gerada localmente no seu dispositivo.
+                {'\n\n'}
+                Ele substitui completamente nome, telefone e e-mail por um avatar digital soberano.
+                {'\n\n'}
+                Nenhuma informação pessoal é usada.{'\n'}
+                Nenhuma identidade real é exposta.
               </Text>
             </View>
-          )}
 
-          {!processing && (
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => navigation.navigate('TotemGeneration')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.buttonText}>Criar meu Totem</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+            {/* Bloco 2 - Por que isso importa? */}
+            <View style={styles.textBlock}>
+              <Text style={styles.blockTitle}>Por que isso importa?</Text>
+              <Text style={styles.blockText}>
+                No CLANN, os participantes não operam como pessoas físicas,
+                mas como identidades seguras dentro de um coletivo protegido.
+                {'\n\n'}
+                Isso impede reconhecimento entre membros
+                e elimina qualquer forma de rastreamento pessoal.
+              </Text>
+            </View>
+
+            {/* Bloco 3 - Como funciona? */}
+            <View style={styles.textBlock}>
+              <Text style={styles.blockTitle}>Como funciona?</Text>
+              <Text style={styles.blockText}>
+                Ao criar seu Totem, o CLANN gera chaves criptográficas exclusivas
+                que permanecem apenas no seu dispositivo.
+                {'\n\n'}
+                Você escolhe um avatar abstrato e um codinome interno.
+                {'\n'}
+                Nada é enviado para servidores centrais.
+              </Text>
+            </View>
+
+            {/* Bloco técnico */}
+            <View style={styles.techBlock}>
+              <Text style={styles.techTitle}>Proteção técnica ativa</Text>
+              <View style={styles.techContent}>
+                <Text style={styles.techItem}>✓ Chaves privadas apenas no dispositivo</Text>
+                <Text style={styles.techItem}>✓ Zero metadados identificáveis</Text>
+                <Text style={styles.techItem}>✓ Nenhum vínculo Totem ↔ Pessoa</Text>
+                <Text style={styles.techItem}>✓ Identidade isolada por CLÃ</Text>
+              </View>
+            </View>
+
+            {/* DOSE 2: Mostrar status de processamento de convite */}
+            {status ? (
+              <View style={styles.statusContainer}>
+                {processing && <ActivityIndicator size="small" color="#4a90e2" style={{ marginRight: 8 }} />}
+                <Text style={styles.statusText}>{status}</Text>
+              </View>
+            ) : null}
+
+            {/* DOSE 2: Mostrar informações do convite */}
+            {clannParams && (
+              <View style={styles.clannInfoContainer}>
+                <Text style={styles.clannInfoTitle}>CLANN ID: {clannParams.clannId}</Text>
+                {clannParams.clanName && (
+                  <Text style={styles.clannInfoText}>Nome: {clannParams.clanName}</Text>
+                )}
+                {clannParams.objective && (
+                  <Text style={styles.clannInfoText}>Objetivo: {clannParams.objective}</Text>
+                )}
+                <Text style={styles.clannInfoText}>
+                  Origem: {clannParams.source === 'invite' ? 'Convite' : 'Acesso direto'}
+                </Text>
+              </View>
+            )}
+
+            {/* Botão único de ação */}
+            {!processing && (
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => navigation.navigate('TotemGeneration')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.buttonText}>Criar meu Totem</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -275,28 +353,98 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   content: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
+    paddingVertical: 48,
   },
-  textContainer: {
-    alignItems: 'center',
-    marginBottom: 64,
+  contentMobile: {
+    paddingVertical: 24,
+    paddingTop: 16,
+  },
+  logo: {
+    width: 70,
+    height: 70,
+    marginBottom: 16,
+    opacity: 0.65,
+    alignSelf: 'center',
   },
   title: {
-    fontSize: 64,
-    fontWeight: 'bold',
+    fontSize: 48,
+    fontWeight: '500',
     color: '#ffffff',
-    marginBottom: 24,
-    letterSpacing: 4,
+    textAlign: 'center',
+    marginBottom: 12,
+    marginTop: 0,
+    letterSpacing: 2,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  backButtonText: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'left',
   },
   subtitle: {
-    fontSize: 20,
+    fontSize: 18,
     color: '#a0a0a0',
-    marginTop: 12,
     textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 26,
+  },
+  textBlock: {
+    width: '100%',
+    maxWidth: 500,
+    marginBottom: 24,
+    paddingHorizontal: 16,
+  },
+  blockTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 12,
+    textAlign: 'left',
+  },
+  blockText: {
+    fontSize: 14,
+    color: '#cccccc',
+    lineHeight: 20,
+    textAlign: 'left',
+  },
+  techBlock: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 32,
+    width: '100%',
+    maxWidth: 500,
+  },
+  techTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4a90e2',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  techContent: {
+    gap: 10,
+  },
+  techItem: {
+    fontSize: 13,
+    color: '#aaaaaa',
+    lineHeight: 20,
+    paddingLeft: 4,
   },
   statusContainer: {
     flexDirection: 'row',
