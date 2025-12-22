@@ -3,7 +3,7 @@
  * Mostra as 12 palavras e solicita confirmação do usuário
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,12 +13,34 @@ import {
   ScrollView,
   Alert,
   TextInput,
+  Image,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 
+// CSS Global para animações na Web (reutilizado da TotemGenerationScreen)
+const globalCSS = `
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+}
+
+@keyframes glow {
+  0% { filter: drop-shadow(0 0 4px rgba(120,180,255,0.5)); }
+  50% { filter: drop-shadow(0 0 12px rgba(120,180,255,0.9)); }
+  100% { filter: drop-shadow(0 0 4px rgba(120,180,255,0.5)); }
+}
+`;
+
 export default function RecoveryPhraseScreen({ route, navigation }) {
   console.log('RecoveryPhraseScreen renderizando...', { route: route?.params });
+  
+  // Detectar se é mobile (width < 768px)
+  const windowWidth = Dimensions.get('window').width;
+  const isMobile = windowWidth < 768;
   
   // Verifica se recoveryPhrase foi passado
   const recoveryPhrase = route?.params?.recoveryPhrase;
@@ -47,6 +69,80 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
   const [confirmedWords, setConfirmedWords] = useState({});
   const [selectedIndices, setSelectedIndices] = useState([]);
   const [inputValues, setInputValues] = useState({});
+  const [showRecoveryTooltip, setShowRecoveryTooltip] = useState(false);
+
+  // Refs para aplicar animações CSS diretamente no DOM (Web)
+  const logoWrapperRef = useRef(null);
+  const logoGlowRef = useRef(null);
+
+  // Injetar CSS global e aplicar animações na Web (reutilizado da TotemGenerationScreen)
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      // Injetar CSS global
+      const styleId = 'recovery-phrase-animations';
+      let styleElement = document.getElementById(styleId);
+      
+      if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        styleElement.textContent = globalCSS;
+        document.head.appendChild(styleElement);
+      }
+
+      // Função helper para aplicar animação CSS via setNativeProps ou DOM direto
+      const applyAnimation = (ref, animation) => {
+        if (!ref?.current) return;
+        
+        try {
+          const element = ref.current;
+          
+          // Método 1: Usar setNativeProps (React Native Web suporta)
+          if (typeof element.setNativeProps === 'function') {
+            element.setNativeProps({
+              style: { 
+                animation,
+                WebkitAnimation: animation, // Prefixo para Safari
+              },
+            });
+            return;
+          }
+          
+          // Método 2: Acessar DOM diretamente (fallback)
+          const domElement = 
+            element._node || 
+            element._nativeNode || 
+            (element._owner && element._owner._instance) ||
+            element;
+          
+          if (domElement && domElement.style) {
+            domElement.style.animation = animation;
+            domElement.style.WebkitAnimation = animation;
+          }
+        } catch (error) {
+          // Silenciosamente falhar se não conseguir aplicar (pode ser mobile)
+          if (__DEV__) {
+            console.warn('Erro ao aplicar animação CSS (normal em mobile):', error.message);
+          }
+        }
+      };
+
+      // Aplicar animações após um pequeno delay para garantir que os elementos estão renderizados
+      const timeoutId = setTimeout(() => {
+        // Aplicar animações pulse e glow na logo CLANN
+        applyAnimation(logoWrapperRef, 'pulse 1.8s ease-in-out infinite');
+        applyAnimation(logoGlowRef, 'glow 2.4s ease-in-out infinite');
+      }, 200);
+
+      // Cleanup ao desmontar
+      return () => {
+        clearTimeout(timeoutId);
+        const element = document.getElementById(styleId);
+        if (element) {
+          element.remove();
+        }
+      };
+    }
+  }, []);
 
   useEffect(() => {
     console.log('useEffect: selecionando índices para verificação...');
@@ -135,7 +231,49 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          <Text style={styles.title}>Frase de Recuperação</Text>
+          {/* Botão Voltar */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color="#666666" />
+          </TouchableOpacity>
+
+          {/* Logo CLANN discreta com animação pulsante e glow */}
+          <View ref={logoWrapperRef} style={styles.logoWrapper}>
+            <View ref={logoGlowRef} style={styles.logoGlowContainer}>
+              <Image
+                source={require('../../../LogoClann.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>Frase de Recuperação</Text>
+            <TouchableOpacity
+              onPress={() => setShowRecoveryTooltip(!showRecoveryTooltip)}
+              style={styles.infoIcon}
+            >
+              <Ionicons name="information-circle" size={20} color="#4a90e2" />
+            </TouchableOpacity>
+          </View>
+          {showRecoveryTooltip && (
+            <View style={styles.tooltip}>
+              <Text style={styles.tooltipTitle}>O que é a Frase de Recuperação?</Text>
+              <Text style={styles.tooltipText}>
+                Esta frase é a única forma de restaurar sua identidade soberana no CLANN.
+                {'\n\n'}
+                Ela funciona como a chave mestra criptográfica do seu Totem.
+                {'\n\n'}
+                Nenhum servidor, administrador ou sistema externo possui uma cópia.
+                {'\n\n'}
+                Se esta frase for perdida, sua identidade não poderá ser recuperada.
+              </Text>
+            </View>
+          )}
           <Text style={styles.subtitle}>
             Anote estas 12 palavras em um local seguro. Elas são necessárias para recuperar seu Totem.
           </Text>
@@ -239,6 +377,7 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
           <TouchableOpacity
             style={[
               styles.button,
+              isMobile && styles.buttonMobile,
               selectedIndices.length > 0 && selectedIndices.every(i => confirmedWords[i]) 
                 ? styles.buttonEnabled 
                 : styles.buttonDisabled
@@ -247,7 +386,12 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
             activeOpacity={0.8}
             disabled={!selectedIndices.every(i => confirmedWords[i])}
           >
-            <Text style={styles.buttonText}>
+            <Text 
+              style={[styles.buttonText, isMobile && styles.buttonTextMobile]}
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.8}
+            >
               {selectedIndices.every(i => confirmedWords[i]) 
                 ? '✅ Confirmar que anotei' 
                 : `⚠️ Confirme ${selectedIndices.filter(i => !confirmedWords[i]).length} palavra(s) primeiro`}
@@ -271,12 +415,63 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  backButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    padding: 8,
+    zIndex: 10,
+  },
+  logoWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  logoGlowContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: 60,
+    height: 60,
+    opacity: 0.65,
+    alignSelf: 'center',
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#ffffff',
     textAlign: 'center',
+  },
+  infoIcon: {
+    padding: 4,
+  },
+  tooltip: {
+    backgroundColor: '#1a2a3a',
+    borderWidth: 1,
+    borderColor: '#4a90e2',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+  },
+  tooltipTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#4a90e2',
     marginBottom: 12,
+  },
+  tooltipText: {
+    fontSize: 13,
+    color: '#cccccc',
+    lineHeight: 20,
+    textAlign: 'left',
   },
   errorText: {
     fontSize: 16,
@@ -420,6 +615,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  buttonMobile: {
+    paddingHorizontal: 16,
+  },
   buttonEnabled: {
     backgroundColor: '#4a90e2',
     opacity: 1,
@@ -432,6 +630,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  buttonTextMobile: {
+    fontSize: 14,
   },
 });
 
