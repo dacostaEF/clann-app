@@ -3,7 +3,7 @@
  * Usuário deve digitar todas as 12 palavras para confirmar
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,27 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Image,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { loadTotemSecure } from '../storage/secureStore';
+
+// CSS Global para animações na Web (reutilizado da TotemGenerationScreen)
+const globalCSS = `
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+}
+
+@keyframes glow {
+  0% { filter: drop-shadow(0 0 4px rgba(120,180,255,0.5)); }
+  50% { filter: drop-shadow(0 0 12px rgba(120,180,255,0.9)); }
+  100% { filter: drop-shadow(0 0 4px rgba(120,180,255,0.5)); }
+}
+`;
 
 const MAX_ATTEMPTS = 5;
 const LOCK_DURATION = 30 * 1000; // 30 segundos
@@ -47,9 +64,82 @@ export default function VerifySeedScreen({ navigation, route }) {
   const [isCorrect, setIsCorrect] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Refs para aplicar animações CSS diretamente no DOM (Web)
+  const logoWrapperRef = useRef(null);
+  const logoGlowRef = useRef(null);
+
   useEffect(() => {
     loadOriginalPhrase();
   }, []);
+
+  // Injetar CSS global e aplicar animações na Web (reutilizado da TotemGenerationScreen)
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      // Injetar CSS global
+      const styleId = 'verify-seed-animations';
+      let styleElement = document.getElementById(styleId);
+      
+      if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        styleElement.textContent = globalCSS;
+        document.head.appendChild(styleElement);
+      }
+
+      // Função helper para aplicar animação CSS via setNativeProps ou DOM direto
+      const applyAnimation = (ref, animation) => {
+        if (!ref?.current) return;
+        
+        try {
+          const element = ref.current;
+          
+          // Método 1: Usar setNativeProps (React Native Web suporta)
+          if (typeof element.setNativeProps === 'function') {
+            element.setNativeProps({
+              style: { 
+                animation,
+                WebkitAnimation: animation, // Prefixo para Safari
+              },
+            });
+            return;
+          }
+          
+          // Método 2: Acessar DOM diretamente (fallback)
+          const domElement = 
+            element._node || 
+            element._nativeNode || 
+            (element._owner && element._owner._instance) ||
+            element;
+          
+          if (domElement && domElement.style) {
+            domElement.style.animation = animation;
+            domElement.style.WebkitAnimation = animation;
+          }
+        } catch (error) {
+          // Silenciosamente falhar se não conseguir aplicar (pode ser mobile)
+          if (__DEV__) {
+            console.warn('Erro ao aplicar animação CSS (normal em mobile):', error.message);
+          }
+        }
+      };
+
+      // Aplicar animações após um pequeno delay para garantir que os elementos estão renderizados
+      const timeoutId = setTimeout(() => {
+        // Aplicar animações pulse e glow na logo CLANN
+        applyAnimation(logoWrapperRef, 'pulse 1.8s ease-in-out infinite');
+        applyAnimation(logoGlowRef, 'glow 2.4s ease-in-out infinite');
+      }, 200);
+
+      // Cleanup ao desmontar
+      return () => {
+        clearTimeout(timeoutId);
+        const element = document.getElementById(styleId);
+        if (element) {
+          element.remove();
+        }
+      };
+    }
+  }, [loading]);
 
   useEffect(() => {
     if (isLocked) {
@@ -154,8 +244,27 @@ export default function VerifySeedScreen({ navigation, route }) {
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.content}>
+            {/* Botão Voltar */}
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={24} color="#666666" />
+            </TouchableOpacity>
+
+            {/* Logo CLANN discreta com animação pulsante e glow */}
+            <View ref={logoWrapperRef} style={styles.logoWrapper}>
+              <View ref={logoGlowRef} style={styles.logoGlowContainer}>
+                <Image
+                  source={require('../../LogoClann.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+
             <View style={styles.header}>
-              <Ionicons name="shield-checkmark" size={64} color="#4a90e2" />
               <Text style={styles.title}>Verifique sua frase</Text>
               <Text style={styles.subtitle}>
                 Digite todas as 12 palavras na ordem correta para confirmar que você salvou sua frase de recuperação.
@@ -250,6 +359,28 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     justifyContent: 'center',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    padding: 8,
+    zIndex: 10,
+  },
+  logoWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  logoGlowContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: 60,
+    height: 60,
+    opacity: 0.65,
+    alignSelf: 'center',
   },
   header: {
     alignItems: 'center',
