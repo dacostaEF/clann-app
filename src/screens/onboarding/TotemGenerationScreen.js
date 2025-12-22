@@ -12,6 +12,7 @@ import {
   SafeAreaView,
   Alert,
   Platform,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,11 +47,11 @@ export default function TotemGenerationScreen({ navigation }) {
   const { setTotem } = useTotem();
   const [loading, setLoading] = useState(true);
   const [totemData, setTotemData] = useState(null);
+  const [activeTooltip, setActiveTooltip] = useState(null);
 
   // Refs para aplicar animações CSS diretamente no DOM (Web)
-  const ringRef = useRef(null);
-  const iconWrapperRef = useRef(null);
-  const shieldContainerRef = useRef(null);
+  const logoWrapperRef = useRef(null);
+  const logoGlowRef = useRef(null);
 
   // Injetar CSS global e aplicar animações na Web
   useEffect(() => {
@@ -106,9 +107,9 @@ export default function TotemGenerationScreen({ navigation }) {
 
       // Aplicar animações após um pequeno delay para garantir que os elementos estão renderizados
       const timeoutId = setTimeout(() => {
-        applyAnimation(ringRef, 'spin 2.4s linear infinite');
-        applyAnimation(iconWrapperRef, 'pulse 1.8s ease-in-out infinite');
-        applyAnimation(shieldContainerRef, 'glow 2.4s ease-in-out infinite');
+        // Aplicar animações pulse e glow na logo CLANN
+        applyAnimation(logoWrapperRef, 'pulse 1.8s ease-in-out infinite');
+        applyAnimation(logoGlowRef, 'glow 2.4s ease-in-out infinite');
       }, 200);
 
       // Cleanup ao desmontar
@@ -181,38 +182,71 @@ export default function TotemGenerationScreen({ navigation }) {
     >
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
-          {/* Ícone animado com anel girando */}
-          <View style={styles.iconContainer}>
-            <View ref={ringRef} style={styles.ring} />
-            <View ref={iconWrapperRef} style={styles.iconWrapper}>
-              <View ref={shieldContainerRef} style={styles.shieldContainer}>
-                <Ionicons name="shield" size={48} color="#4a90e2" style={styles.shieldIcon} />
-              </View>
+          {/* Botão Voltar */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color="#666666" />
+          </TouchableOpacity>
+
+          {/* Logo CLANN discreta com animação pulsante e glow */}
+          <View ref={logoWrapperRef} style={styles.logoWrapper}>
+            <View ref={logoGlowRef} style={styles.logoGlowContainer}>
+              <Image
+                source={require('../../../LogoClann.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
             </View>
           </View>
 
-          {/* Títulos dinâmicos */}
+          {/* Títulos */}
           <Text style={styles.title}>
-            {loading ? 'Forjando seu Totem…' : 'Seu Totem nasceu!'}
+            {loading ? 'Forjando seu Totem…' : 'Seu Totem nasceu'}
           </Text>
 
           <Text style={styles.subtitle}>
             {loading
               ? 'Preparando sua identidade criptográfica.'
-              : 'Ele agora faz parte de você. Proteja-o.'}
+              : 'Identidade criptográfica gerada localmente no seu dispositivo.'}
           </Text>
 
           {/* Card do Totem (apenas quando não está carregando) */}
           {!loading && totemData && (
             <View style={styles.card}>
-              <Text style={styles.cardName}>{totemData.symbolicName}</Text>
+              <View style={styles.cardNameRow}>
+                <Text style={styles.cardName}>{totemData.symbolicName}</Text>
+                <TouchableOpacity
+                  onPress={() => setActiveTooltip(activeTooltip === 'codinome' ? null : 'codinome')}
+                  style={styles.infoIcon}
+                >
+                  <Ionicons name="information-circle" size={18} color="#4a90e2" />
+                </TouchableOpacity>
+              </View>
+              {activeTooltip === 'codinome' && (
+                <View style={styles.tooltip}>
+                  <Text style={styles.tooltipText}>
+                    Identificador interno usado no CLANN. Não revela informações pessoais e pode ser alterado posteriormente.
+                  </Text>
+                </View>
+              )}
               <Text style={styles.cardDescription}>
                 Este é o seu identificador seguro no CLANN.{'\n'}
                 Você pode renomeá-lo depois.
               </Text>
 
               <View style={styles.row}>
-                <Text style={styles.label}>ID:</Text>
+                <View style={styles.labelContainer}>
+                  <Text style={styles.label}>ID:</Text>
+                  <TouchableOpacity
+                    onPress={() => setActiveTooltip(activeTooltip === 'id' ? null : 'id')}
+                    style={styles.infoIcon}
+                  >
+                    <Ionicons name="information-circle" size={16} color="#4a90e2" />
+                  </TouchableOpacity>
+                </View>
                 <TouchableOpacity
                   onPress={() => copyToClipboard(totemData.totemId, 'ID do Totem')}
                   style={styles.copyButton}
@@ -221,9 +255,24 @@ export default function TotemGenerationScreen({ navigation }) {
                   <Ionicons name="copy-outline" size={18} color="#4a90e2" style={styles.copyIcon} />
                 </TouchableOpacity>
               </View>
+              {activeTooltip === 'id' && (
+                <View style={styles.tooltip}>
+                  <Text style={styles.tooltipText}>
+                    Identificador único criptográfico do seu Totem. Gerado deterministicamente a partir da sua chave privada. Usado para autenticação e assinatura digital.
+                  </Text>
+                </View>
+              )}
 
               <View style={styles.row}>
-                <Text style={styles.label}>Chave Pública:</Text>
+                <View style={styles.labelContainer}>
+                  <Text style={styles.label}>Chave Pública:</Text>
+                  <TouchableOpacity
+                    onPress={() => setActiveTooltip(activeTooltip === 'publicKey' ? null : 'publicKey')}
+                    style={styles.infoIcon}
+                  >
+                    <Ionicons name="information-circle" size={16} color="#4a90e2" />
+                  </TouchableOpacity>
+                </View>
                 <TouchableOpacity
                   onPress={() => copyToClipboard(totemData.publicKey, 'Chave pública')}
                   style={styles.copyButton}
@@ -234,6 +283,13 @@ export default function TotemGenerationScreen({ navigation }) {
                   <Ionicons name="copy-outline" size={18} color="#4a90e2" style={styles.copyIcon} />
                 </TouchableOpacity>
               </View>
+              {activeTooltip === 'publicKey' && (
+                <View style={styles.tooltip}>
+                  <Text style={styles.tooltipText}>
+                    Chave criptográfica pública derivada da sua chave privada. Pode ser compartilhada com segurança para verificação de assinaturas e autenticação. A chave privada permanece apenas no seu dispositivo.
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 
@@ -244,8 +300,7 @@ export default function TotemGenerationScreen({ navigation }) {
                 <Text style={styles.buttonText}>Ver frase de recuperação</Text>
               </TouchableOpacity>
               <Text style={styles.recoveryWarning}>
-                Guarde sua frase de recuperação.{'\n'}
-                Sem ela, sua identidade não pode ser restaurada.
+                Sem a frase de recuperação, sua identidade não pode ser restaurada.
               </Text>
             </>
           )}
@@ -267,6 +322,28 @@ const styles = StyleSheet.create({
     paddingTop: 140,
     alignItems: 'center',
     paddingHorizontal: 20,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    padding: 8,
+    zIndex: 10,
+  },
+  logoWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  logoGlowContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: 60,
+    height: 60,
+    opacity: 0.65,
+    alignSelf: 'center',
   },
   iconContainer: {
     width: 140,
@@ -322,12 +399,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1f2937',
   },
+  cardNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
   cardName: {
     color: '#4a90e2',
     fontSize: 20,
     fontWeight: '700',
-    marginBottom: 12,
     textAlign: 'center',
+  },
+  labelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  infoIcon: {
+    marginLeft: 6,
+    padding: 2,
+  },
+  tooltip: {
+    backgroundColor: '#1a2a3a',
+    borderWidth: 1,
+    borderColor: '#4a90e2',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  tooltipText: {
+    fontSize: 12,
+    color: '#cccccc',
+    lineHeight: 18,
+    textAlign: 'left',
   },
   cardDescription: {
     color: '#aaaaaa',
@@ -344,11 +451,12 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#1f2937',
+    gap: 16,
   },
   label: {
     color: '#666666',
     fontSize: 14,
-    flex: 1,
+    flexShrink: 0,
   },
   value: {
     color: '#ffffff',
