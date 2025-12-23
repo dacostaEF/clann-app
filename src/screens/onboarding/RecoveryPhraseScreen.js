@@ -71,6 +71,10 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
   const [inputValues, setInputValues] = useState({});
   const [showRecoveryTooltip, setShowRecoveryTooltip] = useState(false);
 
+  // Cores do ícone informativo (mesmo padrão da página "Seu Totem nasceu")
+  const infoIconColor = 'rgba(107, 122, 144, 0.65)';
+  const infoIconActiveColor = '#4a90e2';
+
   // Refs para aplicar animações CSS diretamente no DOM (Web)
   const logoWrapperRef = useRef(null);
   const logoGlowRef = useRef(null);
@@ -257,7 +261,11 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
               onPress={() => setShowRecoveryTooltip(!showRecoveryTooltip)}
               style={styles.infoIcon}
             >
-              <Ionicons name="information-circle" size={20} color="#4a90e2" />
+              <Ionicons
+                name="information-circle"
+                size={18}
+                color={showRecoveryTooltip ? infoIconActiveColor : infoIconColor}
+              />
             </TouchableOpacity>
           </View>
           {showRecoveryTooltip && (
