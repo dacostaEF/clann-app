@@ -1,3 +1,27 @@
+/**
+ * ⚠️ GATEWAY CLANN - SERVIDOR WEB SOCKET CEGO
+ * 
+ * PRINCÍPIO FUNDAMENTAL: O Gateway é CEGO
+ * - Não lê conteúdo das mensagens
+ * - Não armazena chaves de criptografia
+ * - Apenas roteia payloads opacos
+ * 
+ * 🔐 LIMITAÇÃO DE AUTENTICAÇÃO (FASE 2)
+ * Atualmente: Autenticação por identificação apenas
+ *   { totemId, publicKey } → identificam, mas não autenticam criptograficamente
+ * 
+ * 🚀 EVOLUÇÃO PLANEJADA (FASE 3):
+ * 1. Challenge-response com nonce
+ * 2. Assinatura digital da sessão
+ * 3. Renovação periódica de tokens
+ * 
+ * 📨 LIMITAÇÃO DE COMUNICAÇÃO (FASE 2)
+ * Atualmente: Apenas 1:1 (Totem → Totem)
+ * Futuro: Broadcast eficiente para Clanns
+ * 
+ * ⚠️ ESTE É UM MVP - NÃO PARA PRODUÇÃO EM LARGA ESCALA
+ */
+
 import { WebSocketServer } from 'ws';
 import ConnectionManager from './connectionManager.js';
 import MessageQueue from './messageQueue.js';
@@ -11,6 +35,49 @@ const messageQueue = new MessageQueue();
 const wss = new WebSocketServer({ port: PORT });
 
 console.log(`🚀 Gateway CLANN rodando na porta ${PORT}`);
+console.log(`⚠️  FASE 2 - Autenticação por identificação apenas (não criptográfica)`);
+
+// Função de autenticação (identificação)
+function handleAuthentication(message, ws) {
+  const { totemId, publicKey } = message.payload || {};
+
+  // ⚠️ AVISO: Esta é APENAS identificação, não autenticação forte
+  console.log(`🔑 Identificação (NÃO autenticação forte): ${totemId}`);
+  console.log(`   ⚠️ QUALQUER UM com esta publicKey pode se passar por ${totemId}`);
+
+  if (!totemId || !publicKey) {
+    ws.close(4001, 'Faltam credenciais de identificação');
+    return false;
+  }
+
+  // ✅ Registro para roteamento (identificação aceita)
+  connectionManager.register(totemId, ws);
+  ws.totemId = totemId; // Associar totemId ao WebSocket para uso posterior
+  console.log(`✅ Totem identificado: ${totemId.substring(0, 15)}...`);
+
+  // ⚠️ IMPORTANTE: Não há verificação criptográfica aqui
+  // Na Fase 3, adicionar:
+  // 1. Enviar challenge com nonce
+  // 2. Esperar assinatura do challenge
+  // 3. Validar assinatura com publicKey
+
+  // Entregar mensagens pendentes
+  const pending = messageQueue.getPending(totemId);
+  if (pending.length > 0) {
+    console.log(`   📨 Entregando ${pending.length} mensagens pendentes`);
+    pending.forEach(msg => {
+      ws.send(JSON.stringify(msg));
+    });
+  }
+
+  // Enviar confirmação de autenticação
+  ws.send(JSON.stringify({
+    type: 'auth_success',
+    payload: { totemId }
+  }));
+
+  return true;
+}
 
 wss.on('connection', (ws, request) => {
   console.log('🔗 Nova conexão estabelecida');
@@ -37,43 +104,18 @@ wss.on('connection', (ws, request) => {
       // PRIMEIRA MENSAGEM DEVE SER 'auth'
       if (!isAuthenticated) {
         if (message.type === 'auth') {
-          console.log('🔑 Tentativa de autenticação');
+          console.log('🔑 Tentativa de identificação');
           
           const { totemId, publicKey } = message.payload || {};
           
           console.log('   TotemId recebido:', totemId);
           console.log('   PublicKey recebida:', publicKey ? 'SIM' : 'NÃO');
           
-          if (!totemId || !publicKey) {
-            console.log('❌ Auth falhou: totemId ou publicKey faltando');
-            ws.close(4001, 'Autenticação inválida: faltam credenciais');
-            return;
+          // Usar função de autenticação refatorada
+          if (handleAuthentication(message, ws)) {
+            currentTotemId = totemId;
+            isAuthenticated = true;
           }
-          
-          // Registrar conexão
-          connectionManager.register(totemId, ws);
-          currentTotemId = totemId;
-          isAuthenticated = true;
-          
-          // Associar totemId ao WebSocket para uso posterior
-          ws.totemId = totemId;
-          
-          console.log(`✅ Totem autenticado: ${totemId.substring(0, 20)}...`);
-          
-          // Entregar mensagens pendentes
-          const pending = messageQueue.getPending(totemId);
-          if (pending.length > 0) {
-            console.log(`   📨 Entregando ${pending.length} mensagens pendentes`);
-            pending.forEach(msg => {
-              ws.send(JSON.stringify(msg));
-            });
-          }
-
-          // Enviar confirmação de autenticação
-          ws.send(JSON.stringify({
-            type: 'auth_success',
-            payload: { totemId }
-          }));
           
         } else {
           console.log(`❌ Primeira mensagem não é 'auth', é: ${message.type}`);

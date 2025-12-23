@@ -23,6 +23,7 @@ import * as Clipboard from 'expo-clipboard';
 import { generateTotem } from '../../crypto/totem';
 import { saveTotemSecure } from '../../storage/secureStore';
 import { useTotem } from '../../context/TotemContext';
+import MessagesManager from '../../messages/MessagesManager';
 
 // CSS Global para animações na Web
 const globalCSS = `
@@ -146,6 +147,16 @@ export default function TotemGenerationScreen({ navigation }) {
         // Atualiza o context
         setTotem(newTotem);
         setTotemData(newTotem);
+
+        // INICIALIZAR GATEWAY APÓS CRIAÇÃO DO TOTEM (Fase 3)
+        try {
+          await MessagesManager.initializeGateway();
+          console.log('🌍 Totem conectado ao Gateway CLANN!');
+          console.log('   Comunicação internacional agora disponível');
+        } catch (error) {
+          console.error('⚠️ Gateway não disponível, modo local apenas:', error);
+          // O app continua funcionando localmente
+        }
 
         // Delay para mostrar a animação
         setTimeout(() => setLoading(false), 800);

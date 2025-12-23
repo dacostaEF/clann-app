@@ -21,6 +21,7 @@ import { importTotemFromPicker, importTotemFromQR } from '../backup/ImportTotem'
 import { hasTotemSecure } from '../storage/secureStore';
 import { useTotem } from '../context/TotemContext';
 import QRScannerModal from '../components/QRScannerModal';
+import MessagesManager from '../messages/MessagesManager';
 
 export default function ImportIdentityScreen({ navigation }) {
   const { setTotem } = useTotem();
@@ -91,6 +92,16 @@ export default function ImportIdentityScreen({ navigation }) {
       
       // Atualizar TotemContext
       setTotem(totem);
+      
+      // INICIALIZAR GATEWAY APÓS IMPORTAÇÃO DO TOTEM (Fase 3)
+      try {
+        await MessagesManager.initializeGateway();
+        console.log('🌍 Totem conectado ao Gateway CLANN!');
+        console.log('   Comunicação internacional agora disponível');
+      } catch (error) {
+        console.error('⚠️ Gateway não disponível, modo local apenas:', error);
+        // O app continua funcionando localmente
+      }
       
       Alert.alert(
         'Sucesso',

@@ -25,6 +25,7 @@ import ClanManager from '../../clans/ClanManager';
 import { getCurrentTotemId } from '../../crypto/totemStorage';
 import { generateTotem } from '../../crypto/totem';
 import { saveTotemSecure } from '../../storage/secureStore';
+import MessagesManager from '../../messages/MessagesManager';
 
 export default function WelcomeScreen() {
   const navigation = useNavigation();
@@ -158,6 +159,16 @@ export default function WelcomeScreen() {
             // Obter totemId do Totem criado
             totemId = newTotem.totemId;
             console.log('[WelcomeScreen] Totem criado e injetado no context. ID:', totemId);
+            
+            // INICIALIZAR GATEWAY APÓS CRIAÇÃO DO TOTEM (Fase 3)
+            try {
+              await MessagesManager.initializeGateway();
+              console.log('🌍 Totem conectado ao Gateway CLANN!');
+              console.log('   Comunicação internacional agora disponível');
+            } catch (error) {
+              console.error('⚠️ Gateway não disponível, modo local apenas:', error);
+              // O app continua funcionando localmente
+            }
             
             setStatus('Totem criado. Entrando no CLANN...');
           } catch (error) {

@@ -6,6 +6,8 @@ import DeliveryManager from './DeliveryManager';
 import { logSecurityEvent, SECURITY_EVENTS } from '../security/SecurityLog';
 import { updateLastMessage } from './MessageCache';
 import { compressText, decompressText } from '../utils/compression';
+import { createGatewayClient } from '../services/gateway';
+import { loadTotemSecure } from '../storage/secureStore';
 
 /**
  * Lógica de negócio para mensagens dos CLANNs
@@ -19,6 +21,10 @@ class MessagesManager {
     this.storage = MessagesStorage;
     this.initialized = false;
     this.e2eInitialized = false;
+    
+    // Gateway integration (Fase 3)
+    this.gatewayClient = null;
+    this.isGatewayConnected = false;
   }
 
   // ---------------------------------------------------------
@@ -43,6 +49,211 @@ class MessagesManager {
     } catch (error) {
       console.error('Erro ao inicializar MessagesManager:', error);
       throw error;
+    }
+  }
+
+  // ========== GATEWAY INTEGRATION (FASE 3) ==========
+
+  /**
+   * Inicializar conexão com o Gateway após criação do Totem
+   */
+  async initializeGateway() {
+    try {
+      console.log('🚀 Inicializando Gateway CLANN...');
+
+      // 1. Obter dados do Totem
+      const totemData = await loadTotemSecure();
+      if (!totemData || !totemData.totemId || !totemData.publicKey) {
+        throw new Error('Totem não encontrado ou incompleto');
+      }
+
+      // 2. Criar cliente usando a factory
+      this.gatewayClient = createGatewayClient({
+        gatewayUrl: process.env.EXPO_PUBLIC_GATEWAY_URL || 'ws://localhost:8080',
+      });
+
+      // 3. Conectar com credenciais do Totem
+      await this.gatewayClient.connect(totemData.totemId, totemData.publicKey);
+
+      console.log('✅ Gateway conectado e autenticado');
+
+      // 4. Configurar handler para mensagens recebidas
+      this.setupGatewayHandlers();
+
+      this.isGatewayConnected = true;
+    } catch (error) {
+      console.error('❌ Falha ao inicializar Gateway:', error);
+      this.isGatewayConnected = false;
+      // Não lança erro - Gateway é opcional por enquanto
+    }
+  }
+
+  /**
+   * Configurar handlers do Gateway
+   */
+  setupGatewayHandlers() {
+    if (!this.gatewayClient) return;
+
+    // Handler para status da conexão
+    this.gatewayClient.registerStatusHandler((status) => {
+      console.log('📡 Status Gateway:', status);
+
+      if (status.type === 'connected') {
+        this.onGatewayConnected();
+      } else if (status.type === 'disconnected') {
+        this.onGatewayDisconnected();
+      }
+    });
+
+    // Handler de erros
+    this.gatewayClient.registerErrorHandler((error) => {
+      console.error('💥 Erro no Gateway:', error);
+      this.onGatewayError(error);
+    });
+  }
+
+  /**
+   * Callbacks de status do Gateway
+   */
+  onGatewayConnected() {
+    this.isGatewayConnected = true;
+    console.log('✅ Gateway conectado');
+  }
+
+  onGatewayDisconnected() {
+    this.isGatewayConnected = false;
+    console.log('⚠️ Gateway desconectado');
+  }
+
+  onGatewayError(error) {
+    console.error('💥 Erro no Gateway:', error);
+    // Pode implementar notificação ao usuário aqui
+  }
+
+  /**
+   * Registrar handler para mensagens de um Clann específico
+   */
+  registerClannGatewayHandler(clanId) {
+    if (!this.gatewayClient) {
+      throw new Error('Gateway não inicializado');
+    }
+
+    // Registrar handler para este Clann
+    return this.gatewayClient.registerClannHandler(clanId, async (payload) => {
+      await this.processIncomingGatewayMessage(payload);
+    });
+  }
+
+  /**
+   * Processar mensagem recebida do Gateway
+   */
+  async processIncomingGatewayMessage(payload) {
+    try {
+      console.log(`📬 Mensagem recebida do Gateway para Clann ${payload.clannId}`);
+
+      // 1. Verificar se o Clann existe localmente
+      const clan = await ClanStorage.getClanById(parseInt(payload.clannId));
+      if (!clan) {
+        console.warn(`⚠️ Clann ${payload.clannId} não encontrado localmente`);
+        return;
+      }
+
+      // 2. Descriptografar LOCALMENTE usando a função existente
+      const decryptedContent = await decryptMessage(
+        parseInt(payload.clannId),
+        payload.encryptedPayload
+      );
+
+      // 3. Descomprimir texto
+      const decompressedText = decompressText(decryptedContent);
+
+      // 4. Salvar localmente
+      await this.storage.addMessage(
+        parseInt(payload.clannId),
+        payload.senderTotemId,
+        payload.encryptedPayload, // Salvar criptografado
+        {}
+      );
+
+      // 5. Notificar UI (se houver sistema de notificação)
+      // this.notifyNewMessage(payload.clannId, payload.messageId);
+
+      console.log(`✅ Mensagem ${payload.messageId} processada`);
+    } catch (error) {
+      console.error('❌ Erro ao processar mensagem do Gateway:', error);
+    }
+  }
+
+  /**
+   * Enviar mensagem via Gateway (método alternativo ao addMessage)
+   * ⚠️ LIMITAÇÃO: Apenas 1:1 (recipientTotemId obrigatório)
+   */
+  async sendClannMessageViaGateway(clanId, content, recipientTotemId, options = {}) {
+    if (!this.isGatewayAvailable()) {
+      throw new Error('Gateway não está disponível');
+    }
+
+    // 1. Obter dados do Clann localmente
+    const clan = await ClanStorage.getClanById(parseInt(clanId));
+    if (!clan) {
+      throw new Error(`Clann ${clanId} não encontrado`);
+    }
+
+    // 2. Validar destinatário (atualmente apenas 1:1)
+    if (!recipientTotemId) {
+      throw new Error('recipientTotemId é obrigatório (apenas 1:1)');
+    }
+
+    // 3. Criptografar localmente (função existente)
+    const compressedText = compressText(content);
+    const encryptedPayload = await encryptMessage(parseInt(clanId), compressedText);
+
+    // 4. Enviar via Gateway
+    const messageId = this.gatewayClient.sendMessage(
+      clanId.toString(),
+      recipientTotemId,
+      encryptedPayload
+    );
+
+    // 5. Salvar localmente como "enviando"
+    await this.storage.addMessage(
+      parseInt(clanId),
+      (await loadTotemSecure()).totemId,
+      encryptedPayload,
+      { ...options, status: 'sending', viaGateway: true }
+    );
+
+    console.log(`📤 Mensagem ${messageId} enviada via Gateway`);
+
+    return messageId;
+  }
+
+  /**
+   * Verificar se Gateway está disponível
+   */
+  isGatewayAvailable() {
+    return (
+      this.isGatewayConnected &&
+      this.gatewayClient &&
+      this.gatewayClient.isConnected &&
+      this.gatewayClient.isAuthenticated
+    );
+  }
+
+  /**
+   * Obter métricas do Gateway
+   */
+  getGatewayMetrics() {
+    return this.gatewayClient ? this.gatewayClient.getMetrics() : null;
+  }
+
+  /**
+   * Desconectar Gateway
+   */
+  disconnectGateway() {
+    if (this.gatewayClient) {
+      this.gatewayClient.disconnect();
+      this.isGatewayConnected = false;
     }
   }
 
