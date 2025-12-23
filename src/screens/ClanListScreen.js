@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import ClanCard from '../components/ClanCard';
 import ClanStorage from '../clans/ClanStorage';
 import { getCurrentTotemId } from '../crypto/totemStorage';
@@ -54,7 +55,6 @@ export default function ClanListScreen() {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <Text style={styles.emptyStateTitle}>Nenhum espaço CLANN criado</Text>
       <Text style={styles.emptyStateText}>
         Você ainda não faz parte de nenhum espaço CLANN.{'\n'}
         Aqui é onde seus ambientes de coordenação e diálogo seguro irão aparecer.
@@ -80,6 +80,15 @@ export default function ClanListScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Botão Voltar */}
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => navigation.goBack()}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="arrow-back" size={24} color="#666666" />
+      </TouchableOpacity>
+      
       <View style={styles.header}>
         <Text style={styles.title}>Seus Espaços CLANN</Text>
         <TouchableOpacity
@@ -120,6 +129,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0a0a'
+  },
+  backButton: {
+    position: 'absolute',
+    top: 72,
+    left: 16,
+    padding: 8,
+    zIndex: 10,
   },
   header: {
     flexDirection: 'row',
@@ -171,12 +187,6 @@ const styles = StyleSheet.create({
   emptyStateIcon: {
     fontSize: 64,
     marginBottom: 20
-  },
-  emptyStateTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 12
   },
   emptyStateText: {
     fontSize: 16,

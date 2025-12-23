@@ -7,10 +7,12 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
-  Platform
+  Platform,
+  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import ClanIconPicker from '../components/ClanIconPicker';
 import ClanManager from '../clans/ClanManager';
 import { DEFAULT_CLAN_ICONS } from '../config/ClanTypes';
@@ -38,6 +40,12 @@ export default function CreateClanScreen() {
   const navigation = useNavigation();
   const { totem } = useTotem();
   const [loading, setLoading] = useState(false);
+  const [activeTooltip, setActiveTooltip] = useState(null);
+  const [showMaxMembersModal, setShowMaxMembersModal] = useState(false);
+  
+  // Cores do ícone informativo (mesmo padrão das outras páginas)
+  const infoIconColor = 'rgba(107, 122, 144, 0.65)';
+  const infoIconActiveColor = '#4a90e2';
   
   const [form, setForm] = useState({
     name: '',
@@ -222,19 +230,35 @@ export default function CreateClanScreen() {
           
           <View style={styles.row}>
             <Text style={styles.label}>Máximo de membros:</Text>
-            <TextInput
-              style={[styles.input, styles.smallInput]}
-              value={form.maxMembers}
-              onChangeText={(text) => updateForm('maxMembers', text.replace(/[^0-9]/g, ''))}
-              keyboardType="numeric"
-              maxLength={3}
-              editable={!loading}
-            />
+            <TouchableOpacity
+              onPress={() => setShowMaxMembersModal(true)}
+              activeOpacity={0.7}
+            >
+              <TextInput
+                style={[styles.input, styles.smallInput, styles.disabledInput]}
+                value={form.maxMembers}
+                editable={false}
+                pointerEvents="none"
+              />
+            </TouchableOpacity>
           </View>
           
-          <View style={styles.row}>
-            <Text style={styles.label}>Privacidade:</Text>
-            <View style={styles.radioGroup}>
+          <View style={styles.privacySection}>
+            <View style={styles.row}>
+              <View style={styles.labelContainer}>
+                <Text style={styles.label}>Privacidade:</Text>
+                <TouchableOpacity
+                  onPress={() => setActiveTooltip(activeTooltip === 'privacy' ? null : 'privacy')}
+                  style={styles.infoIcon}
+                >
+                  <Ionicons
+                    name="information-circle"
+                    size={16}
+                    color={activeTooltip === 'privacy' ? infoIconActiveColor : infoIconColor}
+                  />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.radioGroup}>
               <TouchableOpacity
                 style={[
                   styles.radioButton,
@@ -267,6 +291,17 @@ export default function CreateClanScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+            </View>
+            {activeTooltip === 'privacy' && (
+              <View style={styles.tooltip}>
+                <View style={styles.tooltipItemContainer}>
+                  <Text style={styles.tooltipItem}>🔒 Privado</Text>
+                  <Text style={styles.tooltipItemDescription}>Apenas membros convidados podem entrar.</Text>
+                  <Text style={[styles.tooltipItem, styles.tooltipItemSpacing]}>🌐 Público</Text>
+                  <Text style={styles.tooltipItemDescription}>Visível para descoberta. Entrada controlada pelo fundador.</Text>
+                </View>
+              </View>
+            )}
           </View>
         </View>
 
@@ -284,7 +319,7 @@ export default function CreateClanScreen() {
           disabled={!form.name.trim() || loading}
         >
           <Text style={styles.createButtonText}>
-            {loading ? 'Criando...' : '🏰 Fundar CLANN'}
+            {loading ? 'Criando...' : 'Fundar CLANN'}
           </Text>
         </TouchableOpacity>
         
@@ -292,6 +327,40 @@ export default function CreateClanScreen() {
           * O código de convite será gerado após a criação
         </Text>
       </ScrollView>
+
+      {/* Modal: Máximo de Membros */}
+      <Modal
+        visible={showMaxMembersModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowMaxMembersModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMaxMembersModal(false)}
+        >
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Máximo de Membros</Text>
+            </View>
+            <View style={styles.modalBody}>
+              <Text style={styles.modalMessage}>
+                Projetado para manter coesão e responsabilidade entre os participantes.
+              </Text>
+            </View>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={() => setShowMaxMembersModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalButtonText}>Entendi</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -321,6 +390,9 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 24
   },
+  privacySection: {
+    marginBottom: 24
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -336,6 +408,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333'
   },
+  disabledInput: {
+    backgroundColor: '#1a1a1a',
+    opacity: 0.6,
+    borderColor: '#444'
+  },
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top'
@@ -349,12 +426,59 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    flexWrap: 'wrap'
+  },
+  labelContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16
+    flexShrink: 0,
+    marginBottom: 8
   },
   label: {
     color: '#ccc',
     fontSize: 16
+  },
+  infoIcon: {
+    marginLeft: 6,
+    padding: 2,
+  },
+  tooltip: {
+    backgroundColor: '#1a2a3a',
+    borderWidth: 1,
+    borderColor: '#4a90e2',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 12,
+    width: '100%',
+    maxWidth: '100%',
+    alignSelf: 'stretch',
+  },
+  tooltipItemContainer: {
+    width: '100%',
+    alignItems: 'flex-start',
+    paddingHorizontal: 4,
+  },
+  tooltipItem: {
+    fontSize: 13,
+    color: '#ffffff',
+    fontWeight: '600',
+    lineHeight: 20,
+    textAlign: 'left',
+    marginBottom: 4,
+  },
+  tooltipItemDescription: {
+    fontSize: 12,
+    color: '#cccccc',
+    lineHeight: 18,
+    textAlign: 'left',
+    marginBottom: 12,
+    marginLeft: 0,
+  },
+  tooltipItemSpacing: {
+    marginTop: 8,
   },
   smallInput: {
     width: 80,
@@ -404,6 +528,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: 16
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+  modalContent: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: '#4a90e2',
+    overflow: 'hidden'
+  },
+  modalHeader: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a3e'
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center'
+  },
+  modalBody: {
+    padding: 20
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#cccccc',
+    textAlign: 'center',
+    lineHeight: 24
+  },
+  modalFooter: {
+    padding: 20,
+    paddingTop: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#2a2a3e'
+  },
+  modalButton: {
+    backgroundColor: '#4a90e2',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center'
+  },
+  modalButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600'
   }
 });
 

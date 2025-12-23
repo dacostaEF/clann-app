@@ -207,6 +207,15 @@ export default function CreatePinScreen({ navigation }) {
         colors={['#000000', '#1a1a2e', '#16213e']}
         style={styles.gradient}
       >
+        {/* Botão Voltar */}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={24} color="#666666" />
+        </TouchableOpacity>
+        
         <View style={styles.content}>
           <View style={styles.header}>
             <Ionicons name="lock-closed" size={64} color="#4a90e2" />
@@ -281,6 +290,13 @@ const styles = StyleSheet.create({
     color: '#a0a0a0',
     marginTop: 16,
     fontSize: 16,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    padding: 8,
+    zIndex: 10,
   },
   content: {
     flex: 1,
