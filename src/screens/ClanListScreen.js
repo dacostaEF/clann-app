@@ -54,17 +54,17 @@ export default function ClanListScreen() {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <Text style={styles.emptyStateIcon}>🏰</Text>
-      <Text style={styles.emptyStateTitle}>Nenhum CLANN</Text>
+      <Text style={styles.emptyStateTitle}>Nenhum espaço CLANN criado</Text>
       <Text style={styles.emptyStateText}>
-        Você ainda não está em nenhum CLANN
+        Você ainda não faz parte de nenhum espaço CLANN.{'\n'}
+        Aqui é onde seus ambientes de coordenação e diálogo seguro irão aparecer.
       </Text>
       <TouchableOpacity
         style={styles.emptyStateButton}
         onPress={() => navigation.navigate('CreateClan')}
       >
         <Text style={styles.emptyStateButtonText}>
-          Fundar seu primeiro CLANN
+          Fundar um novo CLANN
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
@@ -72,7 +72,7 @@ export default function ClanListScreen() {
         onPress={() => navigation.navigate('JoinClan')}
       >
         <Text style={styles.emptyStateButtonText}>
-          Entrar em um CLANN existente
+          Entrar em um CLANN por convite
         </Text>
       </TouchableOpacity>
     </View>
@@ -81,7 +81,7 @@ export default function ClanListScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Meus CLANNs</Text>
+        <Text style={styles.title}>Seus Espaços CLANN</Text>
         <TouchableOpacity
           style={styles.createButton}
           onPress={() => navigation.navigate('CreateClan')}
