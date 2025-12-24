@@ -19,6 +19,7 @@ import { verifyPin, getRemainingAttempts, getLockRemainingTime } from '../securi
 import { authenticateWithBiometry, isBiometryEnabled } from '../security/BiometryManager';
 import { recordFailedAttempt, executeSelfDestruct } from '../security/SelfDestruct';
 import { recordAccess } from '../security/SecurityAudit';
+import MessagesManager from '../messages/MessagesManager';
 
 export default function EnterPinScreen({ navigation, onSuccess }) {
   const [pin, setPin] = useState('');
@@ -179,7 +180,16 @@ export default function EnterPinScreen({ navigation, onSuccess }) {
     }
   };
 
-  const handleSuccess = () => {
+  const handleSuccess = async () => {
+    // ✅ NOVO: Inicializar Gateway após PIN validado
+    try {
+      await MessagesManager.initializeGateway();
+      console.log('🌍 Gateway conectado após autenticação');
+    } catch (error) {
+      console.warn('⚠️ Gateway não disponível, modo local apenas:', error);
+      // Não bloqueia o acesso - Gateway é opcional
+    }
+
     if (onSuccess) {
       onSuccess();
     } else {

@@ -1,7 +1,7 @@
 {
   "name": "cla-app",
   "version": "1.0.0",
-  "main": "node_modules/expo/AppEntry.js",
+  "main": "index.js",
   "scripts": {
     "start": "node server.js",
     "android": "expo start --android",

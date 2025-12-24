@@ -1,11 +1,24 @@
-import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet, Platform, Linking } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, ActivityIndicator, StyleSheet, Platform, Linking, Text } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTotem, TotemState } from '../context/TotemContext';
 
 export default function AuthCheckScreen() {
   const navigation = useNavigation();
   const { totemState, loading: totemLoading } = useTotem();
+  const [timeoutReached, setTimeoutReached] = useState(false);
+
+  // ✅ Fallback: Se loading demorar mais de 5 segundos, mostrar mensagem
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (totemLoading) {
+        console.warn('⚠️ AuthCheck: Loading demorou mais de 5 segundos');
+        setTimeoutReached(true);
+      }
+    }, 5000);
+
+    return () => clearTimeout(timeout);
+  }, [totemLoading]);
 
   /**
    * Verifica se há código de convite na URL
@@ -80,9 +93,15 @@ export default function AuthCheckScreen() {
     }
   }, [totemLoading, totemState, navigation]);
 
+  // ✅ Sempre renderizar algo visível (nunca return null)
   return (
     <View style={styles.container}>
       <ActivityIndicator size="large" color="#4a90e2" />
+      {timeoutReached && (
+        <Text style={styles.timeoutText}>
+          Carregando...
+        </Text>
+      )}
     </View>
   );
 }
@@ -93,5 +112,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     justifyContent: 'center',
     alignItems: 'center'
+  },
+  timeoutText: {
+    color: '#fff',
+    marginTop: 16,
+    fontSize: 14
   }
 });

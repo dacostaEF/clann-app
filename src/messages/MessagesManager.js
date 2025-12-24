@@ -25,6 +25,12 @@ class MessagesManager {
     // Gateway integration (Fase 3)
     this.gatewayClient = null;
     this.isGatewayConnected = false;
+    
+    // ✅ Sistema de callbacks simples (clannId → Set de callbacks)
+    this.messageCallbacks = new Map(); // clannId → Set<callback>
+    
+    // ✅ Set de handlers registrados no Gateway (evita duplicatas)
+    this.registeredGatewayHandlers = new Set(); // clannId strings
   }
 
   // ---------------------------------------------------------
@@ -112,6 +118,83 @@ class MessagesManager {
     });
   }
 
+  // ✅ NOVO: Sistema de callbacks para notificar UI
+
+  /**
+   * Registrar callback para ser chamado quando uma nova mensagem
+   * for recebida para um CLANN específico
+   * 
+   * @param {string|number} clanId - ID do CLANN
+   * @param {Function} callback - Função: (messageData) => void
+   * @returns {Function} Função para remover o callback (unregister)
+   */
+  onNewMessage(clanId, callback) {
+    if (typeof callback !== 'function') {
+      throw new Error('Callback deve ser uma função');
+    }
+
+    const normalizedClanId = clanId.toString();
+    
+    if (!this.messageCallbacks.has(normalizedClanId)) {
+      this.messageCallbacks.set(normalizedClanId, new Set());
+    }
+    
+    this.messageCallbacks.get(normalizedClanId).add(callback);
+    
+    console.log(`📡 Callback registrado para CLANN ${normalizedClanId}`);
+    
+    // Retornar função para remover callback
+    return () => {
+      this.offNewMessage(clanId, callback);
+    };
+  }
+
+  /**
+   * Remover callback registrado
+   * 
+   * @param {string|number} clanId - ID do CLANN
+   * @param {Function} callback - Função a ser removida
+   */
+  offNewMessage(clanId, callback) {
+    const normalizedClanId = clanId.toString();
+    const callbacks = this.messageCallbacks.get(normalizedClanId);
+    
+    if (callbacks) {
+      callbacks.delete(callback);
+      
+      // Limpar Set vazio
+      if (callbacks.size === 0) {
+        this.messageCallbacks.delete(normalizedClanId);
+      }
+      
+      console.log(`📡 Callback removido para CLANN ${normalizedClanId}`);
+    }
+  }
+
+  /**
+   * Notifica todos os callbacks registrados para um CLANN
+   * (chamado internamente quando mensagem é processada)
+   * 
+   * @param {string|number} clanId - ID do CLANN
+   * @param {Object} messageData - Dados da mensagem processada
+   */
+  notifyNewMessage(clanId, messageData) {
+    const normalizedClanId = clanId.toString();
+    const callbacks = this.messageCallbacks.get(normalizedClanId);
+    
+    if (callbacks && callbacks.size > 0) {
+      console.log(`📢 Notificando ${callbacks.size} callback(s) para CLANN ${normalizedClanId}`);
+      
+      callbacks.forEach(callback => {
+        try {
+          callback(messageData);
+        } catch (error) {
+          console.error(`❌ Erro ao executar callback para CLANN ${normalizedClanId}:`, error);
+        }
+      });
+    }
+  }
+
   /**
    * Callbacks de status do Gateway
    */
@@ -122,30 +205,51 @@ class MessagesManager {
 
   onGatewayDisconnected() {
     this.isGatewayConnected = false;
+    // ✅ Limpar handlers registrados ao desconectar
+    this.registeredGatewayHandlers.clear();
     console.log('⚠️ Gateway desconectado');
   }
 
   onGatewayError(error) {
     console.error('💥 Erro no Gateway:', error);
+    // ✅ Limpar estado de conexão em caso de erro
+    this.isGatewayConnected = false;
     // Pode implementar notificação ao usuário aqui
   }
 
   /**
    * Registrar handler para mensagens de um Clann específico
+   * ✅ Evita múltiplos registros para o mesmo clannId
    */
   registerClannGatewayHandler(clanId) {
-    if (!this.gatewayClient) {
-      throw new Error('Gateway não inicializado');
+    if (!this.isGatewayAvailable()) {
+      console.warn('⚠️ Gateway não disponível, não é possível registrar handler');
+      return null;
     }
 
-    // Registrar handler para este Clann
-    return this.gatewayClient.registerClannHandler(clanId, async (payload) => {
+    const normalizedClanId = clanId.toString();
+
+    // ✅ Verificar se já está registrado (evita duplicatas)
+    if (this.registeredGatewayHandlers.has(normalizedClanId)) {
+      console.log(`📡 Handler já registrado para CLANN ${normalizedClanId}`);
+      return null;
+    }
+
+    // Registrar handler no GatewayClient
+    this.gatewayClient.registerClannHandler(normalizedClanId, async (payload) => {
       await this.processIncomingGatewayMessage(payload);
     });
+
+    // Marcar como registrado
+    this.registeredGatewayHandlers.add(normalizedClanId);
+    console.log(`📡 Handler registrado para CLANN ${normalizedClanId}`);
+
+    return true;
   }
 
   /**
    * Processar mensagem recebida do Gateway
+   * TODA a lógica de descriptografia, validação e persistência fica aqui
    */
   async processIncomingGatewayMessage(payload) {
     try {
@@ -167,20 +271,31 @@ class MessagesManager {
       // 3. Descomprimir texto
       const decompressedText = decompressText(decryptedContent);
 
-      // 4. Salvar localmente
-      await this.storage.addMessage(
+      // 4. Salvar localmente (persistência)
+      const savedMessage = await this.storage.addMessage(
         parseInt(payload.clannId),
         payload.senderTotemId,
         payload.encryptedPayload, // Salvar criptografado
-        {}
+        {
+          messageId: payload.messageId,
+          timestamp: payload.timestamp || Date.now(),
+          viaGateway: true
+        }
       );
 
-      // 5. Notificar UI (se houver sistema de notificação)
-      // this.notifyNewMessage(payload.clannId, payload.messageId);
+      // 5. ✅ Notificar callbacks (UI será atualizada)
+      this.notifyNewMessage(payload.clannId, {
+        clanId: payload.clannId,
+        messageId: payload.messageId || savedMessage.id,
+        senderTotemId: payload.senderTotemId,
+        timestamp: payload.timestamp || savedMessage.timestamp,
+        // Não enviar conteúdo descriptografado - UI vai buscar do storage
+      });
 
-      console.log(`✅ Mensagem ${payload.messageId} processada`);
+      console.log(`✅ Mensagem ${payload.messageId || savedMessage.id} processada e notificada`);
     } catch (error) {
       console.error('❌ Erro ao processar mensagem do Gateway:', error);
+      // Não notificar callbacks em caso de erro
     }
   }
 
@@ -230,13 +345,12 @@ class MessagesManager {
 
   /**
    * Verificar se Gateway está disponível
+   * ✅ Retorna true apenas quando WebSocket está realmente conectado
    */
   isGatewayAvailable() {
     return (
-      this.isGatewayConnected &&
       this.gatewayClient &&
-      this.gatewayClient.isConnected &&
-      this.gatewayClient.isAuthenticated
+      this.isGatewayConnected === true
     );
   }
 
@@ -254,7 +368,17 @@ class MessagesManager {
     if (this.gatewayClient) {
       this.gatewayClient.disconnect();
       this.isGatewayConnected = false;
+      // ✅ Limpar handlers registrados ao desconectar
+      this.registeredGatewayHandlers.clear();
     }
+  }
+
+  /**
+   * Gerar ID único para mensagem
+   * @returns {string} messageId
+   */
+  generateMessageId() {
+    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   // ---------------------------------------------------------
@@ -326,12 +450,58 @@ class MessagesManager {
       const compressedText = compressText(trimmedText);
       const encryptedText = await encryptMessage(parseInt(clanId), compressedText);
       
-      // Salvar mensagem criptografada com opções de self-destruct (Sprint 6)
+      // ✅ NOVO: Tentar enviar via Gateway se disponível
+      let messageId = null;
+      let sentViaGateway = false;
+      
+      if (this.isGatewayAvailable()) {
+        try {
+          // Obter lista de membros do CLANN (exceto o remetente)
+          const clan = await ClanStorage.getClanById(parseInt(clanId));
+          if (clan && clan.members) {
+            const otherMembers = clan.members
+              .filter(m => m.totemId !== authorTotem)
+              .map(m => m.totemId);
+            
+            if (otherMembers.length > 0) {
+              // Enviar para cada membro (broadcast 1:N - Opção A)
+              const sendPromises = otherMembers.map(recipientTotemId => {
+                try {
+                  return this.gatewayClient.sendMessage(
+                    clanId.toString(),
+                    recipientTotemId,
+                    encryptedText // Já criptografado
+                  );
+                } catch (error) {
+                  console.warn(`⚠️ Erro ao enviar para ${recipientTotemId}:`, error);
+                  return null;
+                }
+              });
+              
+              const messageIds = await Promise.all(sendPromises);
+              messageId = messageIds.find(id => id !== null) || this.generateMessageId();
+              sentViaGateway = true;
+              console.log(`📤 Mensagem enviada via Gateway para ${otherMembers.length} membros`);
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Erro ao enviar via Gateway, salvando localmente:', error);
+          // Fallback: salvar localmente
+        }
+      }
+      
+      // Salvar mensagem localmente (sempre, para histórico)
       const message = await this.storage.addMessage(
         parseInt(clanId),
         authorTotem.trim(),
         encryptedText,
-        { selfDestructAt, burnAfterRead }
+        { 
+          selfDestructAt, 
+          burnAfterRead,
+          messageId: messageId || undefined, // Usar ID do Gateway se disponível
+          viaGateway: sentViaGateway,
+          status: sentViaGateway ? 'sent' : 'pending_sync' // Status para sincronização
+        }
       );
       
       // Atualizar cache de última mensagem (Sprint 7 - ETAPA 6)
@@ -352,6 +522,7 @@ class MessagesManager {
       return {
         ...message,
         message: trimmedText, // Texto original para exibição
+        viaGateway: sentViaGateway,
       };
     } catch (error) {
       console.error('Erro ao adicionar mensagem:', error);

@@ -200,6 +200,37 @@ export default function ClanChatScreen() {
     }
   }, [clan?.id, currentTotemId]);
 
+  // ✅ NOVO: Registrar handler do Gateway e callback para atualizar UI
+  useEffect(() => {
+    if (!clan?.id) return;
+
+    console.log(`📡 Configurando listeners para CLANN ${clan.id}`);
+
+    // 1. Registrar handler no Gateway (se disponível)
+    if (MessagesManager.isGatewayAvailable()) {
+      MessagesManager.registerClannGatewayHandler(clan.id);
+    }
+
+    // 2. Registrar callback para atualizar UI quando mensagem chegar
+    const handleNewMessage = (messageData) => {
+      console.log('📬 Nova mensagem recebida, atualizando UI...', messageData);
+      
+      // Apenas recarregar mensagens do storage
+      // (toda lógica de descriptografia já foi feita no MessagesManager)
+      loadMessages();
+    };
+
+    // Registrar callback
+    const unregister = MessagesManager.onNewMessage(clan.id, handleNewMessage);
+
+    // Cleanup: remover callback e handler ao sair
+    return () => {
+      console.log(`📡 Removendo listeners para CLANN ${clan.id}`);
+      unregister(); // Remove callback
+      // GatewayClient gerencia cleanup do handler internamente
+    };
+  }, [clan?.id, loadMessages]);
+
   // Recarregar mensagens ao focar na tela
   useFocusEffect(
     useCallback(() => {

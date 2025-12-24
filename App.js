@@ -3,7 +3,7 @@ import { Buffer } from 'buffer';
 global.Buffer = Buffer;
 
 import React, { useEffect } from 'react';
-import { Platform, View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Platform, View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -201,8 +201,8 @@ function AppNavigator() {
 }
 
 export default function App() {
-  
-
+  // ✅ Sempre renderizar algo - nunca return null
+  // ✅ Providers sempre renderizam children, mas adicionamos fallback visual
   return (
     <TotemProvider>
       <SecurityProvider>
