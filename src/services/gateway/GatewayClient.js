@@ -81,6 +81,7 @@ export class GatewayClient {
       console.log(`🔗 Conectando ao Gateway: ${this.config.gatewayUrl}`);
 
       // React Native: WebSocket é global, não precisa importar
+      console.log('[GatewayClient] gatewayUrl =', this.config.gatewayUrl);
       this.ws = new WebSocket(this.config.gatewayUrl);
 
       // ==================== EVENT HANDLERS ====================
