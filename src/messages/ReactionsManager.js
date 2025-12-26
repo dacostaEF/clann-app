@@ -1,15 +1,17 @@
 import { Platform } from 'react-native';
-
-// Polyfill para web - SQLite não funciona no navegador
-let SQLite;
-if (Platform.OS === 'web') {
-  SQLite = null;
-} else {
-  SQLite = require('expo-sqlite');
-}
+import * as SQLite from 'expo-sqlite';
 
 // Chave para localStorage na Web
 const WEB_REACTIONS_KEY = 'clann_message_reactions';
+
+let database = null;
+
+export const getDatabase = async () => {
+  if (!database) {
+    database = await SQLite.openDatabaseAsync('clans.db');
+  }
+  return database;
+};
 
 // Emojis disponíveis para reações
 export const AVAILABLE_REACTIONS = ['👍', '❤️', '😂', '🔥', '😮'];
@@ -21,7 +23,7 @@ export const AVAILABLE_REACTIONS = ['👍', '❤️', '😂', '🔥', '😮'];
 class ReactionsManager {
   constructor() {
     if (Platform.OS !== 'web' && SQLite) {
-      this.db = SQLite.openDatabase('clans.db');
+      this.db = null; // Será inicializado via getDatabase()
     } else {
       this.db = null;
     }
@@ -63,7 +65,7 @@ class ReactionsManager {
   // ---------------------------------------------------------
   // Carregar reações de uma mensagem
   // ---------------------------------------------------------
-  loadReactions(messageId) {
+  async loadReactions(messageId) {
     if (Platform.OS === 'web' || !this.db) {
       // Na Web, busca no localStorage
       const reactions = this._getWebReactions();
@@ -82,8 +84,9 @@ class ReactionsManager {
       }
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
           `SELECT reactions FROM clan_messages WHERE id = ? LIMIT 1;`,
           [messageId],
@@ -171,8 +174,9 @@ class ReactionsManager {
       return Promise.resolve(true);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
           `UPDATE clan_messages SET reactions = ? WHERE id = ?;`,
           [reactionsJson, messageId],

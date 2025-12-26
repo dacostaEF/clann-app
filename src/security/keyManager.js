@@ -1,17 +1,29 @@
 import { Platform } from 'react-native';
 import { randomBytes } from '../utils/randomBytes';
 import { sha256 } from '@noble/hashes/sha256';
-
-// Polyfill para web - SQLite não funciona no navegador
-let SQLite;
-if (Platform.OS === 'web') {
-  SQLite = null;
-} else {
-  SQLite = require('expo-sqlite');
-}
+import * as SQLite from 'expo-sqlite';
 
 // Chave para localStorage na Web
 const WEB_KEYS_KEY = 'clann_clan_keys';
+
+let database = null;
+
+export const getDatabase = async () => {
+  if (!database) {
+    try {
+      database = await SQLite.openDatabaseAsync('clans.db');
+      console.log('KeyManager database opened successfully');
+    } catch (error) {
+      console.error('Failed to open KeyManager database:', error);
+      throw error;
+    }
+  }
+  return database;
+};
+
+export const initializeDatabase = async () => {
+  const db = await getDatabase();
+};
 
 /**
  * Gerenciador de chaves de grupo (GroupKeys) para criptografia E2E
@@ -20,7 +32,7 @@ const WEB_KEYS_KEY = 'clann_clan_keys';
 class KeyManager {
   constructor() {
     if (Platform.OS !== 'web' && SQLite) {
-      this.db = SQLite.openDatabase('clans.db');
+      this.db = null; // Será inicializado via getDatabase()
     } else {
       this.db = null;
     }
@@ -56,8 +68,9 @@ class KeyManager {
       return Promise.resolve(true);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
           `CREATE TABLE IF NOT EXISTS clan_keys (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,8 +132,9 @@ class KeyManager {
       return Promise.resolve(true);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         // Verifica se já existe
         tx.executeSql(
           `SELECT id FROM clan_keys WHERE clan_id = ?;`,
@@ -172,8 +186,9 @@ class KeyManager {
       return Promise.resolve(keyData.group_key);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
           `SELECT group_key FROM clan_keys WHERE clan_id = ? LIMIT 1;`,
           [clanId],
@@ -211,8 +226,9 @@ class KeyManager {
       return Promise.resolve(true);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
           `DELETE FROM clan_keys WHERE clan_id = ?;`,
           [clanId],

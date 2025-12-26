@@ -1,15 +1,17 @@
 import { Platform } from 'react-native';
-
-// Polyfill para web - SQLite não funciona no navegador
-let SQLite;
-if (Platform.OS === 'web') {
-  SQLite = null;
-} else {
-  SQLite = require('expo-sqlite');
-}
+import * as SQLite from 'expo-sqlite';
 
 // Chave para localStorage na Web
 const WEB_DELIVERY_STATUS_KEY = 'clann_delivery_status';
+
+let database = null;
+
+export const getDatabase = async () => {
+  if (!database) {
+    database = await SQLite.openDatabaseAsync('clans.db');
+  }
+  return database;
+};
 
 /**
  * Gerenciador de status de entrega e leitura de mensagens
@@ -19,7 +21,7 @@ const WEB_DELIVERY_STATUS_KEY = 'clann_delivery_status';
 class DeliveryManager {
   constructor() {
     if (Platform.OS !== 'web' && SQLite) {
-      this.db = SQLite.openDatabase('clans.db');
+      this.db = null; // Será inicializado via getDatabase()
     } else {
       this.db = null;
     }
@@ -96,8 +98,9 @@ class DeliveryManager {
       }
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
           `SELECT delivered_to, read_by FROM clan_messages WHERE id = ? LIMIT 1;`,
           [messageId],
@@ -194,8 +197,9 @@ class DeliveryManager {
       return Promise.resolve(true);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         // Salvar delivered_to e read_by separadamente
         const deliveredToJson = JSON.stringify(status.delivered_to || []);
         const readByJson = JSON.stringify(status.read_by || []);

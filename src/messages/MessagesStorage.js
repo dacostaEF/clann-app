@@ -1,15 +1,27 @@
 import { Platform } from 'react-native';
-
-// Polyfill para web - SQLite não funciona no navegador
-let SQLite;
-if (Platform.OS === 'web') {
-  SQLite = null; // Não será usado no web
-} else {
-  SQLite = require('expo-sqlite');
-}
+import * as SQLite from 'expo-sqlite';
 
 // Chave para localStorage na Web
 const WEB_MESSAGES_KEY = 'clann_messages';
+
+let database = null;
+
+export const getDatabase = async () => {
+  if (!database) {
+    try {
+      database = await SQLite.openDatabaseAsync('clans.db');
+      console.log('Messages database opened successfully');
+    } catch (error) {
+      console.error('Failed to open messages database:', error);
+      throw error;
+    }
+  }
+  return database;
+};
+
+export const initializeDatabase = async () => {
+  const db = await getDatabase();
+};
 
 /**
  * Camada de acesso ao SQLite para mensagens dos CLANNs
@@ -20,8 +32,7 @@ const WEB_MESSAGES_KEY = 'clann_messages';
 class MessagesStorage {
   constructor() {
     if (Platform.OS !== 'web' && SQLite) {
-      // Usa o mesmo banco de dados dos CLANNs
-      this.db = SQLite.openDatabase('clans.db');
+      this.db = null; // Será inicializado via getDatabase()
     } else {
       this.db = null; // No web, não há banco
     }
@@ -91,8 +102,9 @@ class MessagesStorage {
       return Promise.resolve(newMessage);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
           `INSERT INTO clan_messages (clan_id, author_totem, message, timestamp, self_destruct_at, burn_after_read, reactions, delivered_to, read_by, edited, deleted, original_content, edited_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
@@ -162,8 +174,9 @@ class MessagesStorage {
       return Promise.resolve(clanMessages);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         // Busca mensagens mais recentes que lastTimestamp
         tx.executeSql(
           `SELECT * FROM clan_messages 
@@ -209,8 +222,9 @@ class MessagesStorage {
       return Promise.resolve(clanMessages);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         // Remove mensagens expiradas primeiro
         tx.executeSql(
           `DELETE FROM clan_messages 
@@ -261,8 +275,9 @@ class MessagesStorage {
       return Promise.resolve(true);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         // Construir query dinamicamente baseado nos updates
         const fields = [];
         const values = [];
@@ -339,8 +354,9 @@ class MessagesStorage {
     }
 
     // No SQLite, usa transação única para inserir todas
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         const insertedMessages = [];
         let insertCount = 0;
         const totalMessages = messages.length;
@@ -416,8 +432,9 @@ class MessagesStorage {
       return Promise.resolve(true);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
           `DELETE FROM clan_messages WHERE id = ?;`,
           [messageId],
@@ -447,8 +464,9 @@ class MessagesStorage {
       return Promise.resolve(true);
     }
 
+    const db = await getDatabase();
     return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+      db.transaction(tx => {
         tx.executeSql(
           `DELETE FROM clan_messages WHERE clan_id = ?;`,
           [clanId],
