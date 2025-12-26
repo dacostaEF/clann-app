@@ -15,7 +15,39 @@ wss.on('connection', (ws, req) => {
   }));
 
   ws.on('message', (message) => {
-    console.log(`📨 [${clientIp}]: ${message.toString()}`);
+    let data;
+
+    try {
+      data = JSON.parse(message.toString());
+    } catch (e) {
+      console.log(`📨 [${clientIp}] Mensagem não-JSON recebida`);
+      return;
+    }
+
+    console.log(`📨 [${clientIp}]:`, data);
+
+    if (data.type === 'auth') {
+      console.log(`🔐 Auth recebido do Totem ${data.payload?.totemId}`);
+
+      ws.send(JSON.stringify({
+        type: 'AUTH_OK',
+        status: 'accepted'
+      }));
+
+      console.log(`✅ AUTH_OK enviado`);
+
+      // Confirmação final do Totem (DOSE 3)
+      setTimeout(() => {
+        ws.send(JSON.stringify({
+          type: 'TOTEM_READY',
+          payload: {
+            status: 'active'
+          }
+        }));
+
+        console.log('🟣 TOTEM_READY enviado');
+      }, 500);
+    }
   });
 
   ws.on('close', () => {
