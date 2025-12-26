@@ -1,12 +1,5 @@
 import { Platform } from 'react-native';
-
-// Polyfill para web - SQLite não funciona no navegador
-let SQLite;
-if (Platform.OS === 'web') {
-  SQLite = null; // Não será usado no web
-} else {
-  SQLite = require('expo-sqlite');
-}
+import * as SQLite from 'expo-sqlite';
 
 // Chaves para localStorage na Web
 const WEB_CLANS_KEY = 'clann_clans';
@@ -18,10 +11,29 @@ const WEB_CLAN_RULES_KEY = 'clann_clan_rules';
 const WEB_CLAN_COUNCIL_KEY = 'clann_clan_council';
 const WEB_PENDING_APPROVALS_KEY = 'clann_pending_approvals';
 
+let database = null;
+
+export const getDatabase = async () => {
+  if (!database) {
+    try {
+      database = await SQLite.openDatabaseAsync('clann.db');
+      console.log('Database opened successfully');
+    } catch (error) {
+      console.error('Failed to open database:', error);
+      throw error;
+    }
+  }
+  return database;
+};
+
+export const initializeDatabase = async () => {
+  const db = await getDatabase();
+};
+
 class ClanStorage {
   constructor() {
     if (Platform.OS !== 'web' && SQLite) {
-      this.db = SQLite.openDatabase('clans.db');
+      this.db = null; // Será inicializado via getDatabase()
     } else {
       this.db = null; // No web, não há banco
     }

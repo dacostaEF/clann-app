@@ -25,30 +25,13 @@
     },
     "plugins": [
       [
-    "expo-camera",
-    {
-      "cameraPermission": "Permitir $(PRODUCT_NAME) acessar sua câmera para escanear QR Codes"
-    }
-  ]
-]
-
-
-
-
-
-
-
-
-
-
-
-
-    
+        "expo-camera",
+        {
+          "cameraPermission": "Permitir $(PRODUCT_NAME) acessar sua câmera para escanear QR Codes"
+        }
+      ],
+      "expo-font",
+      "expo-secure-store"
+    ]
   }
 }
-
-
-
-
-
-

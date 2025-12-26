@@ -1,0 +1,22 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "cla-app"
+
+include(":app")
+
+apply from: file("../node_modules/expo-modules-autolinking/android/expo-gradle-plugin/scripts/autolinking.gradle")
+useExpoModules()
