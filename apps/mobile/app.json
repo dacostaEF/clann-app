@@ -1,28 +1,35 @@
 {
   "expo": {
-    "name": "CLÃ",
+    "name": "CLANN",
     "slug": "cla-app",
     "version": "1.0.0",
     "orientation": "portrait",
+
+    "icon": "./assets/LogoClann_App.png",
+
     "userInterfaceStyle": "dark",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
+
     "splash": {
       "backgroundColor": "#000000"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+
+    "assetBundlePatterns": ["**/*"],
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.cla.app"
     },
+
     "android": {
       "package": "com.cla.app"
     },
+
     "web": {
       "favicon": "./LogoClann_favicon.png",
       "themeColor": "#000000"
     },
+
     "plugins": [
       [
         "expo-camera",

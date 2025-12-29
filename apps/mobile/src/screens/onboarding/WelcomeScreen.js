@@ -256,7 +256,7 @@ export default function WelcomeScreen() {
 
             {/* Logo CLANN discreta */}
             <Image
-              source={require('../../../LogoClann.png')}
+              source={require('../../../assets/LogoClann.png')}
               style={styles.logo}
               resizeMode="contain"
             />
