@@ -1,19 +1,18 @@
 {
   "expo": {
     "name": "CLANN",
-    "entryPoint": "apps/mobile/index.js",
     "slug": "cla-app",
     "version": "1.0.0",
+
     "orientation": "portrait",
-
-    "icon": "./assets/LogoClann_App.png",
-
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
 
+    "icon": "./assets/LogoClann_App.png",
+
     "splash": {
-      "backgroundColor": "#000000",
-      "image": "./assets/LogoClann_App.png"
+      "image": "./assets/LogoClann_App.png",
+      "backgroundColor": "#000000"
     },
 
     "assetBundlePatterns": ["**/*"],
@@ -24,23 +23,25 @@
     },
 
     "android": {
-      "package": "com.cla.app"
-    },
-
-    "web": {
-      "favicon": "./LogoClann_favicon.png",
-      "themeColor": "#000000"
+      "package": "com.cla.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
 
     "plugins": [
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Permitir $(PRODUCT_NAME) acessar sua câmera para escanear QR Codes"
-        }
-      ],
+      ["expo-camera"],
       "expo-font",
       "expo-secure-store"
-    ]
+    ],
+
+    "extra": {
+      "eas": {
+        "projectId": "40c892c0-20f6-4c56-b017-67658431d14c"
+      }
+    },
+
+    "owner": "dacosta.ef"
   }
 }
