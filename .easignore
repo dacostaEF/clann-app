@@ -1,0 +1,14 @@
+# Ignorar artefatos fora do app mobile
+android/
+android_old/
+.expo/
+node_modules/
+dist/
+
+# Logs e temporários
+*.log
+.tmp/
+
+
+**/.expo
+**/node_modules
