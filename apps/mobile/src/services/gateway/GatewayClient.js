@@ -23,7 +23,7 @@ export class GatewayClient {
   constructor(options = {}) {
     // Configuração injetável
     this.config = {
-      gatewayUrl: options.gatewayUrl || DEFAULT_GATEWAY_URL,
+      gatewayUrl: options.gatewayUrl || process.env.EXPO_PUBLIC_GATEWAY_URL || DEFAULT_GATEWAY_URL,
       maxReconnectAttempts: options.maxReconnectAttempts || RECONNECTION_CONFIG.maxAttempts,
       reconnectBaseDelay: options.reconnectBaseDelay || RECONNECTION_CONFIG.baseDelay,
       pingInterval: options.pingInterval || PING_INTERVAL,
