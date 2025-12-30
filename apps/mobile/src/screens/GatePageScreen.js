@@ -44,7 +44,7 @@ export default function GatePageScreen() {
           <View style={styles.content}>
             {/* Logo CLANN */}
             <Image
-              source={require('../../LogoClann.png')}
+              source={require('../../assets/LogoClann.png')}
               style={styles.logo}
               resizeMode="contain"
             />

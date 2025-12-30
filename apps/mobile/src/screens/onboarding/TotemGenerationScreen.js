@@ -216,7 +216,7 @@ export default function TotemGenerationScreen({ navigation }) {
           <View ref={logoWrapperRef} style={styles.logoWrapper}>
             <View ref={logoGlowRef} style={styles.logoGlowContainer}>
               <Image
-                source={require('../../../LogoClann.png')}
+                source={require('../../../assets/LogoClann.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />
