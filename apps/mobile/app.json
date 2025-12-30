@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "CLANN",
+    "entryPoint": "./index.js",
     "slug": "cla-app",
     "version": "1.0.0",
     "orientation": "portrait",
