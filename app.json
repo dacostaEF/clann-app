@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "a616feb4-dc78-40c5-affa-71e66c0ec168"
+      }
+    },
+    "android": {
+      "package": "com.dacosta.ef.clannmonorepo"
+    }
+  }
+}
