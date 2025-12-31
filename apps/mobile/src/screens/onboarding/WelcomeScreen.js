@@ -9,7 +9,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Platform,
   Linking,
   Alert,
@@ -18,6 +17,7 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useTotem } from '../../context/TotemContext';
@@ -37,6 +37,9 @@ export default function WelcomeScreen() {
   // Detectar se é mobile (width < 768px)
   const windowWidth = Dimensions.get('window').width;
   const isMobile = windowWidth < 768;
+  
+  // Safe area insets para ajustes visuais
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     // DOSE 2: Verificar se há parâmetros de convite na URL
@@ -235,34 +238,36 @@ export default function WelcomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <LinearGradient
         colors={['#000000', '#1a1a2e', '#16213e']}
         style={styles.gradient}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 80 }]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.content, isMobile && styles.contentMobile]}>
-            {/* Navegação de retorno */}
+          {/* Header Ritualístico - Respiro visual soberano */}
+          <View style={styles.topSpacer} />
+          
+          <View style={styles.backContainer}>
             <TouchableOpacity
-              style={styles.backButton}
               onPress={() => navigation.goBack()}
               activeOpacity={0.7}
             >
-              <Text style={styles.backButtonText}>← Voltar</Text>
+              <Text style={styles.backText}>← Voltar</Text>
             </TouchableOpacity>
+          </View>
 
-            {/* Logo CLANN discreta */}
+          <View style={styles.logoContainer}>
             <Image
               source={require('../../../assets/LogoClann.png')}
               style={styles.logo}
               resizeMode="contain"
             />
+          </View>
 
-            {/* Título principal */}
-            <Text style={styles.title}>CLÃ</Text>
+          <View style={[styles.content, isMobile && styles.contentMobile]}>
 
             {/* Subtítulo */}
             <Text style={styles.subtitle}>Identidade Anônima por Design</Text>
@@ -353,7 +358,7 @@ export default function WelcomeScreen() {
           </View>
         </ScrollView>
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -378,12 +383,25 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     paddingTop: 16,
   },
+  topSpacer: {
+    height: 40,
+  },
+  backContainer: {
+    paddingHorizontal: 24,
+    marginBottom: 20,
+  },
+  backText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
   logo: {
     width: 70,
     height: 70,
-    marginBottom: 16,
     opacity: 0.65,
-    alignSelf: 'center',
   },
   title: {
     fontSize: 48,
@@ -393,17 +411,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: 0,
     letterSpacing: 2,
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  backButtonText: {
-    fontSize: 14,
-    color: '#666666',
-    textAlign: 'left',
   },
   subtitle: {
     fontSize: 18,
