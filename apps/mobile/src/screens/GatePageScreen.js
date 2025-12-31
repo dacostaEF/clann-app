@@ -50,7 +50,7 @@ export default function GatePageScreen() {
             />
 
             {/* Título principal */}
-            <Text style={styles.title}>CLANN — Comunicação Corporativa Soberana</Text>
+            <Text style={styles.title}>Comunicação Corporativa Soberana</Text>
 
             {/* Subtítulo */}
             <Text style={styles.subtitle}>
@@ -86,7 +86,6 @@ export default function GatePageScreen() {
                   Requisitar Acesso Corporativo
                 </Text>
               </TouchableOpacity>
-              <Text style={styles.microcopy}>Acesso sujeito à aprovação.</Text>
             </View>
 
           </View>
