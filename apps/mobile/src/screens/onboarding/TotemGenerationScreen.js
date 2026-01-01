@@ -9,12 +9,13 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
   Platform,
   Image,
   ScrollView,
+  Animated,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -24,6 +25,7 @@ import { generateTotem } from '../../crypto/totem';
 import { saveTotemSecure } from '../../storage/secureStore';
 import { useTotem } from '../../context/TotemContext';
 import MessagesManager from '../../messages/MessagesManager';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // CSS Global para animações na Web
 const globalCSS = `
@@ -52,10 +54,51 @@ export default function TotemGenerationScreen({ navigation }) {
   const [activeTooltip, setActiveTooltip] = useState(null);
   const infoIconColor = 'rgba(107, 122, 144, 0.65)';
   const infoIconActiveColor = '#4a90e2';
+  const insets = useSafeAreaInsets();
 
   // Refs para aplicar animações CSS diretamente no DOM (Web)
   const logoWrapperRef = useRef(null);
   const logoGlowRef = useRef(null);
+  
+  // Animação de pulso para mobile
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(0.8)).current;
+
+  // Animação de pulso para mobile (respiração suave)
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      const pulseAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1.08,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 1,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 0.8,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      pulseAnimation.start();
+      return () => pulseAnimation.stop();
+    }
+  }, []);
 
   // Injetar CSS global e aplicar animações na Web
   useEffect(() => {
@@ -189,43 +232,66 @@ export default function TotemGenerationScreen({ navigation }) {
   };
 
   return (
-    <LinearGradient
-      colors={['#000000', '#0A1533', '#000000']}
-      locations={[0, 0.6, 1]}
-      style={styles.container}
-    >
-      <SafeAreaView style={styles.safeArea}>
-        {/* Botão Voltar - Fixo no topo */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={24} color="#666666" />
-        </TouchableOpacity>
-        
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <LinearGradient
+        colors={['#000000', '#0A1533', '#000000']}
+        locations={[0, 0.6, 1]}
+        style={styles.gradient}
+      >
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 80 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.content}>
-
-          {/* Logo CLANN discreta com animação pulsante e glow */}
-          <View ref={logoWrapperRef} style={styles.logoWrapper}>
-            <View ref={logoGlowRef} style={styles.logoGlowContainer}>
-              <Image
-                source={require('../../../assets/LogoClann.png')}
-                style={styles.logo}
-                resizeMode="contain"
-              />
-            </View>
+          {/* Header Ritualístico - Respiro visual soberano */}
+          <View style={styles.topSpacer} />
+          
+          <View style={styles.backContainer}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.backText}>← Voltar</Text>
+            </TouchableOpacity>
           </View>
+
+          <View style={styles.logoContainer}>
+            {/* Logo CLANN discreta com animação pulsante e glow */}
+            {Platform.OS === 'web' ? (
+              <View ref={logoWrapperRef} style={styles.logoWrapper}>
+                <View ref={logoGlowRef} style={styles.logoGlowContainer}>
+                  <Image
+                    source={require('../../../assets/LogoClann.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+            ) : (
+              <Animated.View
+                style={[
+                  styles.logoWrapper,
+                  {
+                    transform: [{ scale: pulseAnim }],
+                    opacity: opacityAnim,
+                  },
+                ]}
+              >
+                <Image
+                  source={require('../../../assets/LogoClann.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </Animated.View>
+            )}
+          </View>
+
+          <View style={styles.content}>
 
           {/* Títulos */}
           <Text style={styles.title}>
-            {loading ? 'Forjando seu Totem…' : 'Seu Totem nasceu'}
+            {loading ? 'Forjando seu Totem…' : 'Seu Totem está emergindo'}
           </Text>
 
           <Text style={styles.subtitle}>
@@ -381,8 +447,8 @@ export default function TotemGenerationScreen({ navigation }) {
           )}
           </View>
         </ScrollView>
-      </SafeAreaView>
-    </LinearGradient>
+      </LinearGradient>
+    </View>
   );
 }
 
@@ -390,7 +456,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  safeArea: {
+  gradient: {
     flex: 1,
   },
   scrollView: {
@@ -398,25 +464,29 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 40,
   },
-  content: {
-    paddingTop: 140,
+  topSpacer: {
+    height: 40,
+  },
+  backContainer: {
+    paddingHorizontal: 24,
+    marginBottom: 20,
+  },
+  backText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
+  logoContainer: {
     alignItems: 'center',
-    paddingHorizontal: 20,
-    minHeight: '100%',
-  },
-  backButton: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    padding: 8,
-    zIndex: 10,
+    marginBottom: 32,
   },
   logoWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+  },
+  content: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
   logoGlowContainer: {
     alignItems: 'center',

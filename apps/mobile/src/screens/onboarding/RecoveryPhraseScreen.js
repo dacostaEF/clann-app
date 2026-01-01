@@ -9,14 +9,15 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
   Alert,
   TextInput,
   Image,
   Platform,
   Dimensions,
+  Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 
@@ -41,6 +42,7 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
   // Detectar se é mobile (width < 768px)
   const windowWidth = Dimensions.get('window').width;
   const isMobile = windowWidth < 768;
+  const insets = useSafeAreaInsets();
   
   // Verifica se recoveryPhrase foi passado
   const recoveryPhrase = route?.params?.recoveryPhrase;
@@ -48,7 +50,7 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
   if (!recoveryPhrase) {
     console.error('RecoveryPhrase não encontrado nos parâmetros!', route?.params);
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.content}>
           <Text style={styles.title}>Erro</Text>
           <Text style={styles.errorText}>Frase de recuperação não encontrada.</Text>
@@ -59,7 +61,7 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
             <Text style={styles.buttonText}>Voltar</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
   
@@ -78,6 +80,46 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
   // Refs para aplicar animações CSS diretamente no DOM (Web)
   const logoWrapperRef = useRef(null);
   const logoGlowRef = useRef(null);
+  
+  // Animação de pulso para mobile (mesma lógica da TotemGenerationScreen)
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(0.8)).current;
+
+  // Animação de pulso para mobile (mesma lógica da TotemGenerationScreen)
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      const pulseAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1.08,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 1,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 0.8,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      pulseAnimation.start();
+      return () => pulseAnimation.stop();
+    }
+  }, []);
 
   // Injetar CSS global e aplicar animações na Web (reutilizado da TotemGenerationScreen)
   useEffect(() => {
@@ -232,28 +274,54 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
-          {/* Botão Voltar */}
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScrollView 
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+      >
+        {/* Header Ritualístico - Respiro visual soberano */}
+        <View style={styles.topSpacer} />
+        
+        <View style={styles.backContainer}>
           <TouchableOpacity
-            style={styles.backButton}
             onPress={() => navigation.goBack()}
             activeOpacity={0.7}
           >
-            <Ionicons name="arrow-back" size={24} color="#666666" />
+            <Text style={styles.backText}>← Voltar</Text>
           </TouchableOpacity>
+        </View>
 
+        <View style={styles.logoContainer}>
           {/* Logo CLANN discreta com animação pulsante e glow */}
-          <View ref={logoWrapperRef} style={styles.logoWrapper}>
-            <View ref={logoGlowRef} style={styles.logoGlowContainer}>
+          {Platform.OS === 'web' ? (
+            <View ref={logoWrapperRef} style={styles.logoWrapper}>
+              <View ref={logoGlowRef} style={styles.logoGlowContainer}>
+                <Image
+                  source={require('../../../assets/LogoClann.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+          ) : (
+            <Animated.View
+              style={[
+                styles.logoWrapper,
+                {
+                  transform: [{ scale: pulseAnim }],
+                  opacity: opacityAnim,
+                },
+              ]}
+            >
               <Image
                 source={require('../../../assets/LogoClann.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />
-            </View>
-          </View>
+            </Animated.View>
+          )}
+        </View>
+
+        <View style={styles.content}>
 
           <View style={styles.titleContainer}>
             <Text style={styles.title}>Frase de Recuperação</Text>
@@ -299,29 +367,14 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
                 >
                   <Text style={styles.wordNumber}>{index + 1}</Text>
                   <Text style={styles.word}>{word}</Text>
-                  {needsVerification && (
-                    <Ionicons name="checkmark-circle" size={16} color="#4a90e2" style={styles.verifyIcon} />
-                  )}
                 </View>
               );
             })}
           </View>
 
-          <TouchableOpacity
-            style={styles.copyButton}
-            onPress={copyPhrase}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="copy-outline" size={20} color="#4a90e2" />
-            <Text style={styles.copyButtonText}>Copiar frase</Text>
-          </TouchableOpacity>
-
           <View style={styles.verificationContainer}>
             <Text style={styles.verificationTitle}>
-              ⚠️ Confirme as palavras destacadas acima:
-            </Text>
-            <Text style={styles.verificationSubtitle}>
-              Digite as palavras nas posições {selectedIndices.map(i => i + 1).join(' e ')} para continuar
+              ⚠️ Digite e confirme as palavras nas posições {selectedIndices.map(i => i + 1).join(' e ')} para continuar.
             </Text>
             {selectedIndices.map((index) => (
               <View key={index} style={styles.verificationRow}>
@@ -383,6 +436,15 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
           </View>
 
           <TouchableOpacity
+            style={styles.copyButton}
+            onPress={copyPhrase}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="copy-outline" size={20} color="#4a90e2" />
+            <Text style={styles.copyButtonText}>Copiar frase</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[
               styles.button,
               isMobile && styles.buttonMobile,
@@ -407,7 +469,7 @@ export default function RecoveryPhraseScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -420,20 +482,24 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 24,
   },
-  content: {
-    flex: 1,
+  topSpacer: {
+    height: 40,
   },
-  backButton: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    padding: 8,
-    zIndex: 10,
+  backContainer: {
+    paddingHorizontal: 24,
+    marginBottom: 20,
+  },
+  backText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
   },
   logoWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
   },
   logoGlowContainer: {
     alignItems: 'center',
@@ -443,7 +509,9 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     opacity: 0.65,
-    alignSelf: 'center',
+  },
+  content: {
+    flex: 1,
   },
   titleContainer: {
     flexDirection: 'row',
@@ -504,36 +572,35 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#2a2a3e',
+    gap: 8,
   },
   wordBox: {
     width: '30%',
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
     padding: 8,
     backgroundColor: '#0f0f1e',
     borderRadius: 8,
   },
   wordNumber: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#4a90e2',
     marginRight: 8,
     fontWeight: '600',
     minWidth: 20,
   },
   word: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#ffffff',
-    fontWeight: '500',
+    fontWeight: '400',
     flex: 1,
+    lineHeight: 18,
   },
   wordBoxHighlighted: {
     backgroundColor: '#1a2a4a',
     borderWidth: 2,
     borderColor: '#4a90e2',
-  },
-  verifyIcon: {
-    marginLeft: 4,
   },
   copyButton: {
     flexDirection: 'row',
@@ -557,15 +624,11 @@ const styles = StyleSheet.create({
     borderColor: '#2a2a3e',
   },
   verificationTitle: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#ffffff',
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  verificationSubtitle: {
-    fontSize: 14,
-    color: '#a0a0a0',
+    fontWeight: '500',
     marginBottom: 16,
+    lineHeight: 22,
   },
   verificationRow: {
     flexDirection: 'row',
