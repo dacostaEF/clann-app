@@ -30,6 +30,7 @@ export default function CreatePinScreen({ navigation }) {
   const [isConfirming, setIsConfirming] = useState(false);
   const [showBiometryOption, setShowBiometryOption] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const insets = useSafeAreaInsets();
   
   // Animação de pulso para mobile (mesma lógica das outras telas)
@@ -102,24 +103,43 @@ export default function CreatePinScreen({ navigation }) {
   const handleNumberPress = (number) => {
     if (!isConfirming) {
       // Primeira entrada do PIN
-      if (pin.length < 6) {
+      if (pin.length < 6 && !isProcessing) {
         setPin(pin + number);
       }
     } else {
       // Confirmação do PIN
-      if (confirmPin.length < 6) {
+      if (confirmPin.length < pin.length && !loading && !isProcessing) {
         const newConfirmPin = confirmPin + number;
         setConfirmPin(newConfirmPin);
         
-        // Se completou a confirmação e coincide, cria automaticamente
-        if (newConfirmPin.length === pin.length && newConfirmPin === pin && pin.length >= 4) {
-          handleCreatePin(pin);
+        // Ao completar o último dígito, mostra spinner IMEDIATAMENTE
+        if (newConfirmPin.length === pin.length && pin.length >= 4) {
+          // Ativa processamento visual instantaneamente
+          setIsProcessing(true);
+          
+          // Validação assíncrona após mostrar o spinner
+          setTimeout(() => {
+            if (newConfirmPin === pin) {
+              // PINs coincidem - cria o PIN
+              handleCreatePin(pin);
+            } else {
+              // PINs não coincidem - volta para entrada e mostra erro
+              setIsProcessing(false);
+              Alert.alert('Erro', 'Os PINs não coincidem. Tente novamente.');
+              setPin('');
+              setConfirmPin('');
+              setIsConfirming(false);
+            }
+          }, 100); // Pequeno delay apenas para garantir renderização do spinner
         }
       }
     }
   };
 
   const handleBackspace = () => {
+    // Não permite backspace durante processamento
+    if (loading || isProcessing) return;
+    
     if (isConfirming && confirmPin.length > 0) {
       setConfirmPin(confirmPin.slice(0, -1));
     } else if (!isConfirming && pin.length > 0) {
@@ -129,10 +149,12 @@ export default function CreatePinScreen({ navigation }) {
 
   const handleCreatePin = async (finalPin) => {
     if (finalPin.length < 4) {
+      setIsProcessing(false);
       Alert.alert('Atenção', 'O PIN deve ter pelo menos 4 dígitos');
       return;
     }
 
+    // Já está em processamento visual, agora inicia a criação real
     setLoading(true);
     try {
       await createPin(finalPin);
@@ -170,9 +192,11 @@ export default function CreatePinScreen({ navigation }) {
         navigation.navigate('Home');
       }
     } catch (error) {
+      setIsProcessing(false);
       Alert.alert('Erro', error.message || 'Não foi possível criar o PIN');
     } finally {
       setLoading(false);
+      setIsProcessing(false);
     }
   };
 
@@ -225,7 +249,7 @@ export default function CreatePinScreen({ navigation }) {
                 key={num}
                 style={styles.numberButton}
                 onPress={() => handleNumberPress(num.toString())}
-                disabled={loading}
+                disabled={loading || isProcessing || (isConfirming && confirmPin.length >= pin.length)}
               >
                 <Text style={styles.numberText}>{num}</Text>
               </TouchableOpacity>
@@ -237,14 +261,14 @@ export default function CreatePinScreen({ navigation }) {
           <TouchableOpacity
             style={styles.numberButton}
             onPress={() => handleNumberPress('0')}
-            disabled={loading}
+            disabled={loading || (isConfirming && confirmPin.length >= pin.length)}
           >
             <Text style={styles.numberText}>0</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.numberButton}
             onPress={handleBackspace}
-            disabled={loading || (pin.length === 0 && confirmPin.length === 0)}
+            disabled={loading || isProcessing || (pin.length === 0 && confirmPin.length === 0) || (isConfirming && confirmPin.length >= pin.length)}
           >
             <Ionicons name="backspace-outline" size={24} color="#ffffff" />
           </TouchableOpacity>
@@ -253,8 +277,8 @@ export default function CreatePinScreen({ navigation }) {
     );
   };
 
-  // Tela de processamento ritualístico
-  if (loading) {
+  // Tela de processamento ritualístico (mostra imediatamente ao completar PIN)
+  if (loading || isProcessing) {
     const spin = spinAnim.interpolate({
       inputRange: [0, 1],
       outputRange: ['0deg', '360deg'],
@@ -413,15 +437,7 @@ export default function CreatePinScreen({ navigation }) {
                 {renderPinDots(pin)}
                 <Text style={[styles.label, { marginTop: 24 }]}>Confirme o PIN:</Text>
                 {renderPinDots(confirmPin)}
-                {confirmPin.length === pin.length && confirmPin.length >= 4 && (
-                  <TouchableOpacity
-                    style={styles.confirmButton}
-                    onPress={handleConfirm}
-                    disabled={loading}
-                  >
-                    <Text style={styles.confirmButtonText}>Confirmar</Text>
-                  </TouchableOpacity>
-                )}
+                {/* Botão removido - processo é automático ao completar o último dígito */}
               </>
             )}
           </View>
