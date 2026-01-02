@@ -10,13 +10,14 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
   Alert,
   ActivityIndicator,
   Image,
   Platform,
+  Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { loadTotemSecure } from '../storage/secureStore';
@@ -67,9 +68,50 @@ export default function VerifySeedScreen({ navigation, route }) {
   // Refs para aplicar animações CSS diretamente no DOM (Web)
   const logoWrapperRef = useRef(null);
   const logoGlowRef = useRef(null);
+  const insets = useSafeAreaInsets();
+  
+  // Animação de pulso para mobile (mesma lógica das outras telas)
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
     loadOriginalPhrase();
+  }, []);
+
+  // Animação de pulso para mobile (mesma lógica das outras telas)
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      const pulseAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1.08,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 1,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 0.8,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      pulseAnimation.start();
+      return () => pulseAnimation.stop();
+    }
   }, []);
 
   // Injetar CSS global e aplicar animações na Web (reutilizado da TotemGenerationScreen)
@@ -226,43 +268,69 @@ export default function VerifySeedScreen({ navigation, route }) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#4a90e2" />
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   const remainingLock = getRemainingLockTime();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <LinearGradient
         colors={['#000000', '#1a1a2e', '#16213e']}
         style={styles.gradient}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.content}>
-            {/* Botão Voltar */}
+        <ScrollView 
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+        >
+          {/* Header Ritualístico - Respiro visual soberano */}
+          <View style={styles.topSpacer} />
+          
+          <View style={styles.backContainer}>
             <TouchableOpacity
-              style={styles.backButton}
               onPress={() => navigation.goBack()}
               activeOpacity={0.7}
             >
-              <Ionicons name="arrow-back" size={24} color="#666666" />
+              <Text style={styles.backText}>← Voltar</Text>
             </TouchableOpacity>
+          </View>
 
+          <View style={styles.logoContainer}>
             {/* Logo CLANN discreta com animação pulsante e glow */}
-            <View ref={logoWrapperRef} style={styles.logoWrapper}>
-              <View ref={logoGlowRef} style={styles.logoGlowContainer}>
+            {Platform.OS === 'web' ? (
+              <View ref={logoWrapperRef} style={styles.logoWrapper}>
+                <View ref={logoGlowRef} style={styles.logoGlowContainer}>
+                  <Image
+                    source={require('../../assets/LogoClann.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+            ) : (
+              <Animated.View
+                style={[
+                  styles.logoWrapper,
+                  {
+                    transform: [{ scale: pulseAnim }],
+                    opacity: opacityAnim,
+                  },
+                ]}
+              >
                 <Image
                   source={require('../../assets/LogoClann.png')}
                   style={styles.logo}
                   resizeMode="contain"
                 />
-              </View>
-            </View>
+              </Animated.View>
+            )}
+          </View>
+
+          <View style={styles.content}>
 
             <View style={styles.header}>
               <Text style={styles.title}>Verifique sua frase</Text>
@@ -336,7 +404,7 @@ export default function VerifySeedScreen({ navigation, route }) {
           </View>
         </ScrollView>
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -354,23 +422,26 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-  },
-  content: {
-    flex: 1,
     padding: 24,
-    justifyContent: 'center',
   },
-  backButton: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    padding: 8,
-    zIndex: 10,
+  topSpacer: {
+    height: 40,
+  },
+  backContainer: {
+    paddingHorizontal: 24,
+    marginBottom: 20,
+  },
+  backText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
   },
   logoWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
   },
   logoGlowContainer: {
     alignItems: 'center',
@@ -380,7 +451,10 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     opacity: 0.65,
-    alignSelf: 'center',
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
   },
   header: {
     alignItems: 'center',

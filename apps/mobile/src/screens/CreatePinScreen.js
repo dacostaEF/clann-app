@@ -3,16 +3,20 @@
  * Permite criar um PIN de 4-6 dígitos
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
   ActivityIndicator,
+  Image,
+  Platform,
+  Animated,
+  ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { createPin } from '../security/PinManager';
@@ -26,10 +30,69 @@ export default function CreatePinScreen({ navigation }) {
   const [isConfirming, setIsConfirming] = useState(false);
   const [showBiometryOption, setShowBiometryOption] = useState(false);
   const [loading, setLoading] = useState(false);
+  const insets = useSafeAreaInsets();
+  
+  // Animação de pulso para mobile (mesma lógica das outras telas)
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(0.8)).current;
+  
+  // Animação de rotação para o spinner de processamento
+  const spinAnim = useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     checkBiometry();
   }, []);
+
+  // Animação de pulso para mobile (mesma lógica das outras telas)
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      const pulseAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1.08,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 1,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 0.8,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      pulseAnimation.start();
+      return () => pulseAnimation.stop();
+    }
+  }, []);
+
+  // Animação de rotação para o spinner de processamento
+  useEffect(() => {
+    if (loading) {
+      const spinAnimation = Animated.loop(
+        Animated.timing(spinAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        })
+      );
+      spinAnimation.start();
+      return () => spinAnimation.stop();
+    }
+  }, [loading]);
 
   const checkBiometry = async () => {
     const available = await isBiometryAvailable();
@@ -190,44 +253,140 @@ export default function CreatePinScreen({ navigation }) {
     );
   };
 
+  // Tela de processamento ritualístico
   if (loading) {
+    const spin = spinAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: ['0deg', '360deg'],
+    });
+
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4a90e2" />
-          <Text style={styles.loadingText}>Criando PIN...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <LinearGradient
+          colors={['#000000', '#1a1a2e', '#16213e']}
+          style={styles.gradient}
+        >
+          <ScrollView 
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+          >
+            {/* Header Ritualístico - Respiro visual soberano */}
+            <View style={styles.topSpacer} />
+            
+            <View style={styles.backContainer}>
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                activeOpacity={0.7}
+                disabled={true}
+              >
+                <Text style={[styles.backText, { opacity: 0.3 }]}>← Voltar</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.logoContainer}>
+              {Platform.OS === 'web' ? (
+                <Image
+                  source={require('../../assets/LogoClann.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Animated.View
+                  style={[
+                    {
+                      transform: [{ scale: pulseAnim }],
+                      opacity: opacityAnim,
+                    },
+                  ]}
+                >
+                  <Image
+                    source={require('../../assets/LogoClann.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                  />
+                </Animated.View>
+              )}
+            </View>
+
+            <View style={styles.processingContainer}>
+              <Animated.View
+                style={[
+                  styles.spinnerContainer,
+                  { transform: [{ rotate: spin }] },
+                ]}
+              >
+                <View style={styles.spinnerCircle} />
+              </Animated.View>
+              
+              <Text style={styles.processingTitle}>Estamos criando seu Totem</Text>
+              <Text style={styles.processingSubtitle}>
+                Processando sua identidade e segurança…
+              </Text>
+            </View>
+          </ScrollView>
+        </LinearGradient>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <LinearGradient
         colors={['#000000', '#1a1a2e', '#16213e']}
         style={styles.gradient}
       >
-        {/* Botão Voltar */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
+        <ScrollView 
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+          keyboardShouldPersistTaps="handled"
         >
-          <Ionicons name="arrow-back" size={24} color="#666666" />
-        </TouchableOpacity>
-        
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <Ionicons name="lock-closed" size={64} color="#4a90e2" />
-            <Text style={styles.title}>
-              {!isConfirming ? 'Crie seu PIN' : 'Confirme seu PIN'}
-            </Text>
-            <Text style={styles.subtitle}>
-              {!isConfirming
-                ? 'Digite um PIN de 4 a 6 dígitos para proteger seu Totem'
-                : 'Digite o mesmo PIN novamente para confirmar'}
-            </Text>
+          {/* Header Ritualístico - Respiro visual soberano */}
+          <View style={styles.topSpacer} />
+          
+          <View style={styles.backContainer}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.backText}>← Voltar</Text>
+            </TouchableOpacity>
           </View>
+
+          <View style={styles.logoContainer}>
+            {Platform.OS === 'web' ? (
+              <Image
+                source={require('../../assets/LogoClann.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            ) : (
+              <Animated.View
+                style={[
+                  {
+                    transform: [{ scale: pulseAnim }],
+                    opacity: opacityAnim,
+                  },
+                ]}
+              >
+                <Image
+                  source={require('../../assets/LogoClann.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </Animated.View>
+            )}
+          </View>
+
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Ionicons name="lock-closed" size={56} color="#4a90e2" />
+              <Text style={styles.title}>
+                {!isConfirming ? 'Crie seu PIN' : 'Confirme seu PIN'}
+              </Text>
+              <Text style={styles.subtitle}>
+                {!isConfirming
+                  ? 'Digite um PIN de 4 a 6 dígitos para proteger seu Totem'
+                  : 'Digite o mesmo PIN novamente para confirmar'}
+              </Text>
+            </View>
 
           <View style={styles.pinSection}>
             {!isConfirming ? (
@@ -267,10 +426,11 @@ export default function CreatePinScreen({ navigation }) {
             )}
           </View>
 
-          {renderNumberPad()}
-        </View>
+            {renderNumberPad()}
+          </View>
+        </ScrollView>
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -281,59 +441,68 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  scrollContent: {
+    flexGrow: 1,
+    padding: 24,
+  },
+  topSpacer: {
+    height: 40,
+  },
+  backContainer: {
+    paddingHorizontal: 24,
+    marginBottom: 20,
+  },
+  backText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
+  logoContainer: {
     alignItems: 'center',
+    marginBottom: 32,
   },
-  loadingText: {
-    color: '#a0a0a0',
-    marginTop: 16,
-    fontSize: 16,
-  },
-  backButton: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    padding: 8,
-    zIndex: 10,
+  logo: {
+    width: 60,
+    height: 60,
+    opacity: 0.65,
   },
   content: {
     flex: 1,
-    padding: 24,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   header: {
     alignItems: 'center',
-    marginTop: 40,
+    marginTop: 8,
+    marginBottom: 32,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 26,
+    fontWeight: '700',
     color: '#ffffff',
-    marginTop: 16,
-    marginBottom: 12,
+    marginTop: 12,
+    marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#a0a0a0',
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
+    paddingHorizontal: 16,
   },
   pinSection: {
     alignItems: 'center',
-    marginVertical: 40,
+    marginVertical: 24,
   },
   label: {
     fontSize: 14,
     color: '#a0a0a0',
-    marginBottom: 16,
+    marginBottom: 12,
+    marginTop: 8,
   },
   pinContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   pinDot: {
     width: 16,
@@ -373,23 +542,61 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   numberPad: {
-    marginBottom: 40,
+    marginTop: 8,
+    marginBottom: 24,
   },
   numberRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   numberButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 75,
+    height: 75,
+    borderRadius: 37.5,
     backgroundColor: '#1a1a2e',
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 8,
+    marginHorizontal: 6,
     borderWidth: 1,
     borderColor: '#2a2a3e',
+  },
+  // Estilos para tela de processamento
+  processingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  spinnerContainer: {
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  spinnerCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 3,
+    borderColor: '#4a90e2',
+    borderTopColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
+  processingTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  processingSubtitle: {
+    fontSize: 15,
+    color: '#a0a0a0',
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: 32,
   },
   numberText: {
     fontSize: 24,
