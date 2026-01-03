@@ -4,7 +4,10 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  Alert
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -44,6 +47,15 @@ export default function ClanChatScreen() {
   const [selectedMessageForAction, setSelectedMessageForAction] = useState(null);
   
   const flatListRef = useRef(null);
+
+  // Função para scroll automático para nova mensagem (lista invertida)
+  const scrollToNewMessage = useCallback(() => {
+    // Para lista invertida, scroll para offset 0 (topo)
+    flatListRef.current?.scrollToOffset({
+      offset: 0,
+      animated: true,
+    });
+  }, []);
 
   // Inicialização
   useEffect(() => {
@@ -144,9 +156,9 @@ export default function ClanChatScreen() {
         return msgs;
       }
       
-      // Scroll para o final após um pequeno delay
+      // Scroll para nova mensagem após carregar
       setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        scrollToNewMessage();
       }, 100);
     } catch (error) {
       console.error('Erro ao carregar mensagens:', error);
@@ -264,28 +276,74 @@ export default function ClanChatScreen() {
   const handleSendMessage = async () => {
     if (!messageText.trim() || !clan?.id || !currentTotemId) return;
     
+    // Salvar texto e opções antes de limpar
+    const textToSend = messageText.trim();
+    const tempId = `temp_${Date.now()}`;
+    const now = Date.now();
+    
+    // 1. Criar mensagem otimista (optimistic update)
+    const optimisticMessage = {
+      id: tempId,
+      message: textToSend,
+      authorTotem: currentTotemId,
+      timestamp: now,
+      clanId: clan.id,
+      status: 'sending',
+      selfDestructAt: selfDestructAt || null,
+      burnAfterRead: burnAfterRead || false,
+      reactions: [],
+      deliveredTo: [],
+      readBy: [],
+      edited: false,
+      deleted: false,
+    };
+    
+    // 2. Adicionar mensagem otimista ao estado IMEDIATAMENTE
+    setMessages(prevMessages => [optimisticMessage, ...prevMessages]);
+    
+    // 3. Limpar input imediatamente
+    setMessageText('');
+    const savedSelfDestructAt = selfDestructAt;
+    const savedBurnAfterRead = burnAfterRead;
+    setSelfDestructAt(null);
+    setBurnAfterRead(false);
+    
+    // 4. Scroll para nova mensagem
+    setTimeout(() => {
+      scrollToNewMessage();
+    }, 50);
+    
+    // 5. Enviar mensagem em background (não bloqueia UI)
     try {
       await MessagesManager.addMessage(
         clan.id,
         currentTotemId,
-        messageText.trim(),
+        textToSend,
         {
-          selfDestructAt,
-          burnAfterRead
+          selfDestructAt: savedSelfDestructAt,
+          burnAfterRead: savedBurnAfterRead
         }
       );
       
-      setMessageText('');
-      setSelfDestructAt(null);
-      setBurnAfterRead(false);
-      await loadMessages(); // Recarregar lista
+      // 6. Recarregar mensagens do storage para substituir a otimista pela real
+      await loadMessages();
       
-      // Atualizar timestamp do sync após enviar mensagem
+      // 7. Atualizar timestamp do sync após enviar mensagem
       if (clan?.id) {
         SyncManager.updateLastTimestamp(clan.id, Date.now());
       }
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
+      
+      // Remover mensagem otimista em caso de erro
+      setMessages(prevMessages => 
+        prevMessages.filter(msg => msg.id !== tempId)
+      );
+      
+      // Restaurar texto no input em caso de erro
+      setMessageText(textToSend);
+      setSelfDestructAt(savedSelfDestructAt);
+      setBurnAfterRead(savedBurnAfterRead);
       
       // Mostra mensagem específica se foi bloqueado por enforcement
       if (error.enforcementBlocked || error.message.includes('bloqueada') || error.message.includes('proibido')) {
@@ -511,6 +569,25 @@ export default function ClanChatScreen() {
     return null;
   };
 
+  // Listener para teclado no Android (melhora UX)
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      const keyboardDidShowListener = Keyboard.addListener(
+        'keyboardDidShow',
+        () => {
+          // Pequeno delay para Android
+          setTimeout(() => {
+            scrollToNewMessage();
+          }, 100);
+        }
+      );
+
+      return () => {
+        keyboardDidShowListener.remove();
+      };
+    }
+  }, [scrollToNewMessage]);
+
   return (
     <LinearGradient
       colors={chatTheme.backgroundGradient}
@@ -518,16 +595,24 @@ export default function ClanChatScreen() {
       end={{ x: 1, y: 1 }}
       style={styles.container}
     >
-      <SafeAreaView style={styles.safeArea}>
-        {/* Header Premium */}
-        <ChatHeader
-          clan={clan}
-          onBack={() => navigation.goBack()}
-          memberCount={memberCount}
-        />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.select({
+          ios: 90,
+          android: 0,
+        })}
+        style={{ flex: 1 }}
+      >
+        <SafeAreaView style={styles.safeArea}>
+          {/* Header Premium */}
+          <ChatHeader
+            clan={clan}
+            onBack={() => navigation.goBack()}
+            memberCount={memberCount}
+          />
 
-        {/* Área de mensagens */}
-        <View style={styles.messagesContainer}>
+          {/* Área de mensagens */}
+          <View style={styles.messagesContainer}>
           {messages.length === 0 && !loading ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateIcon}>💬</Text>
@@ -549,10 +634,8 @@ export default function ClanChatScreen() {
               contentContainerStyle={styles.messagesListContent}
               showsVerticalScrollIndicator={false}
               onContentSizeChange={() => {
-                // Scroll automático para última mensagem
-                setTimeout(() => {
-                  flatListRef.current?.scrollToEnd({ animated: true });
-                }, 100);
+                // Scroll automático para nova mensagem (lista invertida)
+                scrollToNewMessage();
               }}
             />
           )}
@@ -591,7 +674,8 @@ export default function ClanChatScreen() {
           canEdit={selectedMessageForAction?.canEdit || false}
           canDelete={selectedMessageForAction?.canDelete || false}
         />
-      </SafeAreaView>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }

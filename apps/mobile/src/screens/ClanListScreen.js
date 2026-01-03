@@ -80,15 +80,6 @@ export default function ClanListScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Botão Voltar */}
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="arrow-back" size={24} color="#666666" />
-      </TouchableOpacity>
-      
       <View style={styles.header}>
         <Text style={styles.title}>Seus Espaços CLANN</Text>
         <TouchableOpacity
@@ -129,13 +120,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0a0a'
-  },
-  backButton: {
-    position: 'absolute',
-    top: 72,
-    left: 16,
-    padding: 8,
-    zIndex: 10,
   },
   header: {
     flexDirection: 'row',

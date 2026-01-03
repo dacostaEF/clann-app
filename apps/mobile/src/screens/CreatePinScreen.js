@@ -82,7 +82,10 @@ export default function CreatePinScreen({ navigation }) {
 
   // Animação de rotação para o spinner de processamento
   useEffect(() => {
-    if (loading) {
+    if (loading || isProcessing) {
+      // Resetar o valor da animação para garantir rotação contínua
+      spinAnim.setValue(0);
+      
       const spinAnimation = Animated.loop(
         Animated.timing(spinAnim, {
           toValue: 1,
@@ -91,9 +94,15 @@ export default function CreatePinScreen({ navigation }) {
         })
       );
       spinAnimation.start();
-      return () => spinAnimation.stop();
+      return () => {
+        spinAnimation.stop();
+        spinAnim.setValue(0);
+      };
+    } else {
+      // Parar animação quando não está processando
+      spinAnim.setValue(0);
     }
-  }, [loading]);
+  }, [loading, isProcessing]);
 
   const checkBiometry = async () => {
     const available = await isBiometryAvailable();
