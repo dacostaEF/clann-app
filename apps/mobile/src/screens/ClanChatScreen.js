@@ -129,7 +129,7 @@ export default function ClanChatScreen() {
     }
   }, [clan?.members]);
 
-  // Carregar mensagens
+  // Carregar mensagens com merge inteligente de mensagens otimistas
   const loadMessages = useCallback(async () => {
     if (!clan?.id || !currentTotemId) return [];
     
@@ -149,24 +149,112 @@ export default function ClanChatScreen() {
         
         // Recarregar mensagens para obter status atualizado
         const updatedMsgs = await MessagesManager.getMessages(clan.id);
-        setMessages(updatedMsgs);
+        
+        // Merge inteligente: preservar otimistas e substituir apenas quando real estiver disponível
+        setMessages(prevMessages => {
+          // 1. Separar mensagens otimistas (id começando com 'temp_')
+          const optimisticMsgs = prevMessages.filter(m => m.id && m.id.toString().startsWith('temp_'));
+          
+          // 2. Mesclar mensagens reais do storage com otimistas correspondentes
+          const mergedReals = updatedMsgs.map(real => {
+            // Procurar otimista correspondente
+            const matchingOptimistic = optimisticMsgs.find(opt => 
+              opt.message === real.message &&
+              opt.authorTotem === real.authorTotem &&
+              Math.abs(opt.timestamp - real.timestamp) < 10000 // Dentro de 10 segundos
+            );
+            
+            // Se encontrou otimista correspondente, usa a real (com status atualizado)
+            if (matchingOptimistic) {
+              return {
+                ...real,
+                status: 'sent' // Atualizar status de 'sending' para 'sent'
+              };
+            }
+            
+            // Caso contrário, retorna a mensagem real
+            return real;
+          });
+          
+          // 3. Manter otimistas ainda não confirmadas (não têm correspondente real ainda)
+          const stillPending = optimisticMsgs.filter(opt =>
+            !updatedMsgs.some(real =>
+              real.message === opt.message &&
+              real.authorTotem === opt.authorTotem &&
+              Math.abs(opt.timestamp - real.timestamp) < 10000
+            )
+          );
+          
+          // 4. Combinar mensagens reais mescladas com otimistas pendentes
+          const allMessages = [...mergedReals, ...stillPending];
+          
+          // 5. Ordenar por timestamp decrescente (mais novas primeiro) para inverted={true}
+          const sortedMessages = allMessages.sort((a, b) => b.timestamp - a.timestamp);
+          
+          return sortedMessages;
+        });
+        
+        // Scroll para nova mensagem após carregar
+        setTimeout(() => {
+          scrollToNewMessage();
+        }, 100);
+        
+        // Retornar mensagens mescladas (precisamos acessar o estado atualizado)
         return updatedMsgs;
       } else {
-        setMessages(msgs);
+        // Merge inteligente mesmo quando não há mensagens recebidas
+        setMessages(prevMessages => {
+          // 1. Separar mensagens otimistas
+          const optimisticMsgs = prevMessages.filter(m => m.id && m.id.toString().startsWith('temp_'));
+          
+          // 2. Mesclar mensagens reais do storage com otimistas correspondentes
+          const mergedReals = msgs.map(real => {
+            const matchingOptimistic = optimisticMsgs.find(opt => 
+              opt.message === real.message &&
+              opt.authorTotem === real.authorTotem &&
+              Math.abs(opt.timestamp - real.timestamp) < 10000
+            );
+            
+            if (matchingOptimistic) {
+              return {
+                ...real,
+                status: 'sent'
+              };
+            }
+            
+            return real;
+          });
+          
+          // 3. Manter otimistas ainda não confirmadas
+          const stillPending = optimisticMsgs.filter(opt =>
+            !msgs.some(real =>
+              real.message === opt.message &&
+              real.authorTotem === opt.authorTotem &&
+              Math.abs(opt.timestamp - real.timestamp) < 10000
+            )
+          );
+          
+          // 4. Combinar e ordenar
+          const allMessages = [...mergedReals, ...stillPending];
+          const sortedMessages = allMessages.sort((a, b) => b.timestamp - a.timestamp);
+          
+          return sortedMessages;
+        });
+        
+        // Scroll para nova mensagem após carregar
+        setTimeout(() => {
+          scrollToNewMessage();
+        }, 100);
+        
         return msgs;
       }
-      
-      // Scroll para nova mensagem após carregar
-      setTimeout(() => {
-        scrollToNewMessage();
-      }, 100);
     } catch (error) {
       console.error('Erro ao carregar mensagens:', error);
       return [];
     } finally {
       setLoading(false);
     }
-  }, [clan?.id, currentTotemId]);
+  }, [clan?.id, currentTotemId, scrollToNewMessage]);
 
   // Handler para deltas recebidos via sync (Sprint 6 - ETAPA 6)
   const handleIncomingDeltas = useCallback(async (deltaMessages) => {
