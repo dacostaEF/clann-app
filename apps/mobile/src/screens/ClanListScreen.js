@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import ClanCard from '../components/ClanCard';
 import ClanStorage from '../clans/ClanStorage';
@@ -17,7 +17,6 @@ import { getCurrentTotemId } from '../crypto/totemStorage';
 
 export default function ClanListScreen() {
   const navigation = useNavigation();
-  const isFocused = useIsFocused();
   
   const [clans, setClans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,24 +24,74 @@ export default function ClanListScreen() {
 
   const loadClans = async () => {
     try {
-      const totemId = await getCurrentTotemId();
+      setLoading(true);
       
+      // 1. Garantir inicialização do banco ANTES de buscar dados
+      await ClanStorage.init();
+      console.log('🔍 Banco SQLite inicializado');
+      
+      // 2. Implementar retry controlado para getCurrentTotemId()
+      let totemId = await getCurrentTotemId();
+      let attempts = 0;
+      
+      while (!totemId && attempts < 5) {
+        console.log(`🔍 Tentativa ${attempts + 1}/5: TotemId não disponível, aguardando...`);
+        await new Promise(resolve => setTimeout(resolve, 300));
+        totemId = await getCurrentTotemId();
+        attempts++;
+      }
+      
+      if (!totemId) {
+        console.error('❌ TotemId não disponível após retry');
+        Alert.alert('Erro', 'Totem não encontrado. Por favor, gere um Totem primeiro.');
+        setClans([]);
+        return;
+      }
+      
+      // 🔍 LOG DIAGNÓSTICO: TotemId encontrado após retry
+      console.log('🔍 [DEBUG_CLANLIST] TotemId encontrado para busca:', totemId);
+      console.log('🔍 [DEBUG_CLANLIST] TotemId é null?', totemId === null);
+      
+      // 🔎 LOG DIAGNÓSTICO FINAL: TotemId para busca
+      console.log('🔎 [LISTA] TotemId para busca:', totemId);
+      
+      console.log('🔍 LISTAGEM - totemId:', totemId);
+      
+      // 3. Só então buscar CLANNs
       const userClans = await ClanStorage.getUserClans(totemId);
+      
+      // 🔎 LOG DIAGNÓSTICO FINAL: CLANNs retornados do banco
+      console.log('🔎 [LISTA] CLANNs retornados do banco:', userClans.length, userClans);
+      
+      // 🔍 LOG DIAGNÓSTICO: Resultado da query
+      console.log('🔍 [DEBUG_CLANLIST] Número de CLANNs retornado pela query:', userClans.length);
+      if (userClans.length > 0) {
+        console.log('🔍 [DEBUG_CLANLIST] Primeiro CLANN encontrado:', userClans[0].id, userClans[0].name);
+      } else {
+        console.log('🔍 [DEBUG_CLANLIST] Array de CLANNs está VAZIO.');
+      }
+      
+      console.log('🔍 CLANNs encontrados:', userClans.length);
+      console.log('🔍 COMPARAÇÃO - IDs são consistentes? Verificar logs anteriores de criação');
+      
       setClans(userClans);
     } catch (error) {
+      console.error('❌ Erro ao carregar CLANNs:', error);
       Alert.alert('Erro', 'Não foi possível carregar seus CLANNs');
-      console.error(error);
+      setClans([]);
     } finally {
+      // 4. Melhorar UX com loading state - garantir parada
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    if (isFocused) {
+  // Recarregar CLANNs sempre que a tela receber foco
+  useFocusEffect(
+    useCallback(() => {
       loadClans();
-    }
-  }, [isFocused]);
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -53,30 +102,37 @@ export default function ClanListScreen() {
     navigation.navigate('ClanDetail', { clanId: clan.id });
   };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyStateText}>
-        Você ainda não faz parte de nenhum espaço CLANN.{'\n'}
-        Aqui é onde seus ambientes de coordenação e diálogo seguro irão aparecer.
-      </Text>
-      <TouchableOpacity
-        style={styles.emptyStateButton}
-        onPress={() => navigation.navigate('CreateClan')}
-      >
-        <Text style={styles.emptyStateButtonText}>
-          Fundar um novo CLANN
+  const renderEmptyState = () => {
+    // ✅ Só renderizar empty state se não estiver carregando E lista estiver vazia
+    if (loading) {
+      return null; // Enquanto carrega, não mostra empty state
+    }
+    
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyStateText}>
+          Você ainda não faz parte de nenhum espaço CLANN.{'\n'}
+          Aqui é onde seus ambientes de coordenação e diálogo seguro irão aparecer.
         </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.emptyStateButton, styles.secondaryButton]}
-        onPress={() => navigation.navigate('JoinClan')}
-      >
-        <Text style={styles.emptyStateButtonText}>
-          Entrar em um CLANN por convite
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
+        <TouchableOpacity
+          style={styles.emptyStateButton}
+          onPress={() => navigation.navigate('CreateClan')}
+        >
+          <Text style={styles.emptyStateButtonText}>
+            Fundar um novo CLANN
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.emptyStateButton, styles.secondaryButton]}
+          onPress={() => navigation.navigate('JoinClan')}
+        >
+          <Text style={styles.emptyStateButtonText}>
+            Entrar em um CLANN por convite
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -97,6 +153,7 @@ export default function ClanListScreen() {
       ) : (
         <FlatList
           data={clans}
+          extraData={clans}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <ClanCard clan={item} onPress={handleClanPress} />

@@ -199,9 +199,20 @@ class ClanStorage {
   }
 
   async init() {
-    if (Platform.OS === 'web' || !this.db) {
+    if (Platform.OS === 'web') {
       // No web, não há banco de dados
       return Promise.resolve(true);
+    }
+    
+    // ✅ INICIALIZAR this.db ANTES de qualquer operação
+    if (!this.db) {
+      try {
+        this.db = await getDatabase();
+        console.log('✅ ClanStorage: this.db inicializado com sucesso');
+      } catch (error) {
+        console.error('❌ ClanStorage: Erro ao inicializar this.db:', error);
+        return Promise.reject(error);
+      }
     }
     
     return new Promise((resolve, reject) => {
@@ -558,6 +569,12 @@ class ClanStorage {
           (_, result) => {
             const clanId = result.insertId;
 
+            // 🟢 LOG DIAGNÓSTICO: CLANN inserido no banco
+            console.log('🟢 [DB] CLANN inserido', { 
+              clanId: result.insertId, 
+              totemId: totemId 
+            });
+
             // Inserir o fundador como membro
             tx.executeSql(
               `INSERT INTO clan_members (clan_id, totem_id, role, joined_at)
@@ -747,6 +764,10 @@ class ClanStorage {
         return dateB - dateA;
       });
 
+      // 🗃️ LOG DIAGNÓSTICO FINAL: Query executada (Web)
+      console.log('🗃️ [SQL] Query executada para totem_id:', totemId);
+      console.log('🗃️ [SQL] Resultados da query:', userClans);
+
       return Promise.resolve(userClans);
     }
 
@@ -763,7 +784,15 @@ class ClanStorage {
           ORDER BY c.created_at DESC;
           `,
           [totemId],
-          (_, { rows }) => resolve(rows._array),
+          (_, { rows }) => {
+            const results = rows._array;
+            
+            // 🗃️ LOG DIAGNÓSTICO FINAL: Query executada (SQLite)
+            console.log('🗃️ [SQL] Query executada para totem_id:', totemId);
+            console.log('🗃️ [SQL] Resultados da query:', results);
+            
+            resolve(results);
+          },
           (_, err) => reject(err)
         );
 

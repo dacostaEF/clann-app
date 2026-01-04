@@ -22,9 +22,43 @@ if (Platform.OS === 'web') {
 }
 
 /**
- * Nome da chave usada no SecureStore
+ * Migração one-shot: garante que todo o app use apenas 'totem_data'
+ * Migra dados de 'CLANN_TOTEM_DATA' (legado) para 'totem_data' (canônico)
+ * @returns {Promise<Object>} Resultado da migração
  */
-const TOTEM_KEY = 'CLANN_TOTEM_DATA';
+export async function migrateTotemKeyIfNeeded() {
+  try {
+    const canonical = await SecureStore.getItemAsync('totem_data');
+    const legacy = await SecureStore.getItemAsync('CLANN_TOTEM_DATA');
+
+    if (!canonical && legacy) {
+      console.log('🔄 [TOTEM MIGRATION] Migrando CLANN_TOTEM_DATA → totem_data');
+      await SecureStore.setItemAsync('totem_data', legacy);
+      await SecureStore.deleteItemAsync('CLANN_TOTEM_DATA');
+      console.log('✅ [TOTEM MIGRATION] Concluída com sucesso.');
+      return { migrated: true };
+    }
+
+    if (canonical && legacy) {
+      // Canonical vence. Apenas limpa legado.
+      console.log('🧹 [TOTEM MIGRATION] Canonical já existe; limpando chave legado CLANN_TOTEM_DATA');
+      await SecureStore.deleteItemAsync('CLANN_TOTEM_DATA');
+      return { migrated: false, cleanedLegacy: true };
+    }
+
+    console.log('ℹ️ [TOTEM MIGRATION] Nenhuma migração necessária.');
+    return { migrated: false };
+  } catch (e) {
+    console.error('❌ [TOTEM MIGRATION] Falha na migração:', e);
+    return { migrated: false, error: String(e) };
+  }
+}
+
+/**
+ * Nome da chave usada no SecureStore
+ * ✅ Padronizado para 'totem_data' (chave canônica)
+ */
+const TOTEM_KEY = 'totem_data';
 
 /**
  * Salva o totem no armazenamento seguro

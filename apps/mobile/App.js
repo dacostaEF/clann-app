@@ -62,6 +62,9 @@ import { initE2E } from './src/security/e2e';
 // Migrações (Sprint 8 - ETAPA 1)
 import MigrationManager from './src/storage/MigrationManager';
 
+// Migração de chave Totem (identidade única)
+import { migrateTotemKeyIfNeeded } from './src/crypto/totemStorage';
+
 // Segurança Hard (Sprint 8 - ETAPA 3)
 import { init as initDeviceTrust } from './src/security/DeviceTrust';
 import { init as initSessionFortress } from './src/security/SessionFortress';
@@ -79,6 +82,21 @@ const Stack = createNativeStackNavigator();
 
 function AppNavigator() {
   useEffect(() => {
+    // ✅ MIGRAÇÃO DE CHAVE TOTEM (PRIMEIRO - antes de qualquer uso de Totem)
+    // Garante identidade única: migra 'CLANN_TOTEM_DATA' → 'totem_data' se necessário
+    migrateTotemKeyIfNeeded()
+      .then(result => {
+        if (result.migrated) {
+          console.log('[App] ✅ Migração de chave Totem concluída');
+        } else if (result.cleanedLegacy) {
+          console.log('[App] ✅ Chave legado Totem limpa');
+        }
+      })
+      .catch(error => {
+        console.error('[App] ❌ Erro na migração de chave Totem:', error);
+        // Continua mesmo com erro (fail-open)
+      });
+
     // Inicializar migrações PRIMEIRO (Sprint 8 - ETAPA 1)
     // Migrações devem rodar antes de qualquer acesso ao banco
     MigrationManager.init()

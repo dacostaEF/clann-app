@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,32 +16,47 @@ import { Ionicons } from '@expo/vector-icons';
 import ClanIconPicker from '../components/ClanIconPicker';
 import ClanManager from '../clans/ClanManager';
 import { DEFAULT_CLAN_ICONS } from '../config/ClanTypes';
-import { useTotem } from '../context/TotemContext';
+import { getCurrentTotemId } from '../crypto/totemStorage';
 
-// Helper para Alert que funciona na Web
+// Helper para Alert que funciona na Web e retorna Promise
 const showAlert = (title, message, buttons) => {
-  if (Platform.OS === 'web') {
-    // Na Web, usar window.alert como fallback
-    const result = window.confirm(`${title}\n\n${message}`);
-    if (result && buttons && buttons[0] && buttons[0].onPress) {
-      buttons[0].onPress();
-    } else if (buttons && buttons.find(b => b.text === 'OK' || b.style === 'cancel')) {
-      const okButton = buttons.find(b => b.text === 'OK' || b.style === 'cancel');
-      if (okButton && okButton.onPress) {
-        okButton.onPress();
+  return new Promise((resolve) => {
+    // Wrapper para chamar onPress original e depois resolver Promise
+    const wrappedButtons = buttons.map(button => ({
+      ...button,
+      onPress: () => {
+        if (button.onPress) {
+          button.onPress();
+        }
+        resolve(button.text || 'OK');
       }
+    }));
+
+    if (Platform.OS === 'web') {
+      // Na Web, usar window.confirm como fallback
+      const result = window.confirm(`${title}\n\n${message}`);
+      if (result && wrappedButtons[0] && wrappedButtons[0].onPress) {
+        wrappedButtons[0].onPress();
+      } else if (wrappedButtons.find(b => b.text === 'OK' || b.style === 'cancel')) {
+        const okButton = wrappedButtons.find(b => b.text === 'OK' || b.style === 'cancel');
+        if (okButton && okButton.onPress) {
+          okButton.onPress();
+        }
+      } else {
+        resolve('Cancel');
+      }
+    } else {
+      Alert.alert(title, message, wrappedButtons);
     }
-  } else {
-    Alert.alert(title, message, buttons);
-  }
+  });
 };
 
 export default function CreateClanScreen() {
   const navigation = useNavigation();
-  const { totem } = useTotem();
   const [loading, setLoading] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState(null);
   const [showMaxMembersModal, setShowMaxMembersModal] = useState(false);
+  const [creatorTotemId, setCreatorTotemId] = useState(null);
   
   // Cores do ícone informativo (mesmo padrão das outras páginas)
   const infoIconColor = 'rgba(107, 122, 144, 0.65)';
@@ -55,6 +70,21 @@ export default function CreateClanScreen() {
     maxMembers: '50',
     privacy: 'private'
   });
+
+  // Carregar totemId antecipadamente (fonte única de verdade: Storage)
+  useEffect(() => {
+    const loadId = async () => {
+      try {
+        const id = await getCurrentTotemId();
+        setCreatorTotemId(id);
+        console.log('🔍 CRIAÇÃO - totemId carregado:', id);
+      } catch (error) {
+        console.error('❌ Erro ao carregar totemId:', error);
+        setCreatorTotemId(null);
+      }
+    };
+    loadId();
+  }, []);
 
   const updateForm = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -70,22 +100,19 @@ export default function CreateClanScreen() {
       return;
     }
 
+    // Validar totemId antes de criar (fonte única de verdade: Storage)
+    if (!creatorTotemId) {
+      console.error('❌ TotemId não disponível');
+      showAlert('Erro', 'Totem não identificado. Por favor, gere um Totem primeiro.');
+      return;
+    }
+
+    console.log('🔍 CRIAÇÃO - totemId:', creatorTotemId);
     console.log('🟢 Iniciando loading...');
     setLoading(true);
     
     try {
       console.log('🔵 Iniciando criação de CLANN...');
-      
-      // Obter totemId do context
-      const creatorTotemId = totem?.totemId;
-      console.log('🔵 Totem do context:', totem ? 'OK' : 'NULL');
-      console.log('🔵 Totem ID:', creatorTotemId || 'NULL');
-      
-      if (!creatorTotemId) {
-        showAlert('Erro', 'Totem não encontrado. Por favor, gere um Totem primeiro.');
-        setLoading(false);
-        return;
-      }
       
       console.log('🔵 Verificando se pode criar CLANN...');
       const canCreate = await ClanManager.canCreateClan(creatorTotemId);
@@ -104,6 +131,12 @@ export default function CreateClanScreen() {
         privacy: form.privacy
       });
       
+      // 🟡 LOG DIAGNÓSTICO: Antes de chamar criação
+      console.log('🟡 [CREATE] Iniciando criação de CLANN', { 
+        name: form.name.trim(), 
+        totemId: creatorTotemId 
+      });
+      
       const clan = await ClanManager.createClan(
         {
           name: form.name.trim(),
@@ -118,7 +151,11 @@ export default function CreateClanScreen() {
       
       console.log('🔵 CLANN criado com sucesso!', clan);
       
-      showAlert(
+      // 🟢 LOG DIAGNÓSTICO: Antes de exibir Alert
+      console.log('🟢 [UI] Exibindo Alert de CLANN criado');
+      
+      // ✅ AGUARDAR Alert antes de continuar - garantir que usuário veja e confirme
+      const selectedOption = await showAlert(
         'CLANN Criado!',
         `"${clan.name}" foi criado com sucesso.\nCódigo de convite: ${clan.invite_code}`,
         [
@@ -138,11 +175,17 @@ export default function CreateClanScreen() {
           },
           {
             text: 'OK',
-            style: 'cancel'
+            style: 'cancel',
+            onPress: () => {
+              // ✅ Navegação só acontece aqui, após OK do Alert
+              // Voltar para tab CLANNs (Home → Clans) para recarregar lista
+              navigation.navigate('Home', { screen: 'Clans' });
+            }
           }
         ]
       );
       
+      // ✅ Só limpar formulário e desativar loading APÓS Alert ser confirmado
       setForm({
         name: '',
         icon: DEFAULT_CLAN_ICONS[0],
@@ -152,11 +195,12 @@ export default function CreateClanScreen() {
         privacy: 'private'
       });
       
+      setLoading(false);
+      
     } catch (error) {
       console.error('❌ Erro ao criar CLANN:', error);
       console.error('❌ Stack:', error.stack);
-      showAlert('Erro ao criar CLANN', error.message || 'Erro desconhecido');
-    } finally {
+      await showAlert('Erro ao criar CLANN', error.message || 'Erro desconhecido');
       setLoading(false);
     }
   };
