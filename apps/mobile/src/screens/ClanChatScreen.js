@@ -693,6 +693,19 @@ export default function ClanChatScreen() {
     return timeDiff > 5 * 60 * 1000;
   }, []);
 
+  // Verificar se deve mostrar timestamp (mostrar apenas na última mensagem do bloco)
+  const shouldShowTimestamp = useCallback((currentMsg, nextMsg) => {
+    // Sempre mostrar se não há próxima mensagem (última da lista)
+    if (!nextMsg || nextMsg.type !== 'message') return true;
+    
+    // Mostrar se próxima mensagem é de autor diferente
+    if (currentMsg.authorTotem !== nextMsg.authorTotem) return true;
+    
+    // Mostrar se intervalo de tempo for maior que 5 minutos
+    const timeDiff = nextMsg.timestamp - currentMsg.timestamp;
+    return timeDiff > 5 * 60 * 1000;
+  }, []);
+
   // Agrupar mensagens por data e preparar para renderização
   const groupedMessages = useMemo(() => {
     if (!messages.length) return [];
@@ -733,7 +746,11 @@ export default function ClanChatScreen() {
       const isMyMessage = item.authorTotem === currentTotemId;
       // Com lista não invertida, mensagem anterior está em index - 1
       const prevItem = index > 0 ? groupedMessages[index - 1] : null;
+      // Próxima mensagem está em index + 1
+      const nextItem = index < groupedMessages.length - 1 ? groupedMessages[index + 1] : null;
+      
       const showAuthor = shouldShowAuthor(item, prevItem);
+      const showTimestamp = shouldShowTimestamp(item, nextItem);
 
       // Normalizar authorName para evitar problemas com null/undefined
       const authorName = !isMyMessage && item.authorTotem
@@ -747,6 +764,7 @@ export default function ClanChatScreen() {
           authorName={authorName}
           timestamp={item.timestamp}
           showAuthor={showAuthor && !isMyMessage}
+          showTimestamp={showTimestamp}
           showAvatar={false}
           selfDestructAt={item.selfDestructAt}
           burnAfterRead={item.burnAfterRead}

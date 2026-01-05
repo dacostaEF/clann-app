@@ -17,6 +17,7 @@ export default function MessageBubble({
   authorName, 
   timestamp,
   showAuthor = false,
+  showTimestamp = true,
   showAvatar = false,
   selfDestructAt = null,
   burnAfterRead = false,
@@ -81,7 +82,10 @@ export default function MessageBubble({
         </Text>
 
         {/* Timestamp e indicadores */}
-        <View style={styles.footer}>
+        <View style={[
+          styles.footer,
+          isSent ? styles.footerSent : styles.footerReceived
+        ]}>
           {/* Indicador de self-destruct ou burn-after-read (Sprint 6) */}
           {(selfDestructAt || burnAfterRead) && (
             <Text style={styles.destructIcon}>
@@ -89,12 +93,15 @@ export default function MessageBubble({
             </Text>
           )}
           
-          <Text style={[
-            styles.timestamp,
-            isSent ? styles.timestampSent : styles.timestampReceived
-          ]}>
-            {formatTime(timestamp)}
-          </Text>
+          {/* Timestamp inteligente - mostrar apenas quando necessário */}
+          {showTimestamp && (
+            <Text style={[
+              styles.timestamp,
+              isSent ? styles.timestampSent : styles.timestampReceived
+            ]}>
+              {formatTime(timestamp)}
+            </Text>
+          )}
           
           {/* Indicador de edição (Sprint 6 - ETAPA 5) */}
           {edited && !deleted && (
@@ -186,18 +193,26 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
     marginTop: 2,
   },
+  footerSent: {
+    justifyContent: 'flex-end',
+  },
+  footerReceived: {
+    justifyContent: 'flex-start',
+  },
   timestamp: {
-    fontSize: 11,
-    marginRight: 4,
+    fontSize: 10,
+    opacity: 0.8,
   },
   timestampSent: {
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: 'rgba(255, 255, 255, 0.65)',
+    marginRight: 4,
   },
   timestampReceived: {
-    color: chatTheme.textTertiary,
+    color: chatTheme.textTertiary || chatTheme.textSecondary,
+    opacity: 0.7,
+    marginRight: 4,
   },
   checkmarks: {
     marginLeft: 2,
