@@ -18,6 +18,7 @@ export default function MessageBubble({
   timestamp,
   showAuthor = false,
   showTimestamp = true,
+  isPending = false,
   showAvatar = false,
   selfDestructAt = null,
   burnAfterRead = false,
@@ -56,7 +57,8 @@ export default function MessageBubble({
   return (
     <View style={[
       styles.container,
-      isSent ? styles.containerSent : styles.containerReceived
+      isSent ? styles.containerSent : styles.containerReceived,
+      isPending && styles.containerPending
     ]}>
       {/* Nome do autor (apenas para mensagens recebidas) */}
       {!isSent && showAuthor && authorName && (
@@ -67,7 +69,8 @@ export default function MessageBubble({
       <TouchableOpacity
         style={[
           styles.bubble,
-          isSent ? styles.bubbleSent : styles.bubbleReceived
+          isSent ? styles.bubbleSent : styles.bubbleReceived,
+          isPending && styles.bubblePending
         ]}
         onLongPress={onLongPress}
         activeOpacity={0.9}
@@ -108,8 +111,8 @@ export default function MessageBubble({
             <Text style={styles.editedLabel}>(editado)</Text>
           )}
           
-          {/* Status de mensagem (Sprint 6 - ETAPA 4) - apenas para mensagens enviadas */}
-          {isSent && (
+          {/* Status de mensagem (Sprint 6 - ETAPA 4) - apenas para mensagens enviadas e não pendentes */}
+          {isSent && !isPending && (
             <MessageStatus 
               deliveredTo={deliveredTo}
               readBy={readBy}
@@ -117,6 +120,11 @@ export default function MessageBubble({
           )}
         </View>
       </TouchableOpacity>
+
+      {/* Indicador de envio pendente (Fase 3 - Item 3.3) */}
+      {isPending && isSent && (
+        <Text style={styles.pendingLabel}>enviando…</Text>
+      )}
 
       {/* Linha de reações (Sprint 6 - ETAPA 3) */}
       {reactions && (
@@ -144,6 +152,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     alignItems: 'flex-start',
   },
+  containerPending: {
+    opacity: 0.7,
+  },
   authorName: {
     fontSize: 12,
     color: chatTheme.textSecondary,
@@ -168,6 +179,9 @@ const styles = StyleSheet.create({
   bubbleReceived: {
     backgroundColor: chatTheme.bubbleReceived,
     borderBottomLeftRadius: 4,
+  },
+  bubblePending: {
+    opacity: 0.7,
   },
   messageText: {
     fontSize: 15,
@@ -220,6 +234,15 @@ const styles = StyleSheet.create({
   destructIcon: {
     fontSize: 12,
     marginRight: 4,
+  },
+  pendingLabel: {
+    fontSize: 10,
+    color: chatTheme.textTertiary || chatTheme.textSecondary,
+    marginTop: 2,
+    marginRight: 4,
+    fontStyle: 'italic',
+    opacity: 0.7,
+    alignSelf: 'flex-end',
   },
 });
 

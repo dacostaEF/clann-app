@@ -757,6 +757,9 @@ export default function ClanChatScreen() {
         ? `Totem ${item.authorTotem.slice(0, 8)}...`
         : null;
 
+      // Detectar se mensagem está pendente (otimista)
+      const isPending = item.status === 'sending' || (item.id && item.id.toString().startsWith('temp_'));
+
       return (
         <MessageBubble
           message={item.message}
@@ -765,6 +768,7 @@ export default function ClanChatScreen() {
           timestamp={item.timestamp}
           showAuthor={showAuthor && !isMyMessage}
           showTimestamp={showTimestamp}
+          isPending={isPending}
           showAvatar={false}
           selfDestructAt={item.selfDestructAt}
           burnAfterRead={item.burnAfterRead}
