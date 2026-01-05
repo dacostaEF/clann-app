@@ -98,8 +98,23 @@ export default function ClanListScreen() {
     loadClans();
   };
 
+  // PASSO 3 — ENTRADA DIRETA NO CLANN (NÃO BLOQUEANTE)
   const handleClanPress = (clan) => {
-    navigation.navigate('ClanDetail', { clanId: clan.id });
+    if (!clan || !clan.id) {
+      console.warn('[ENTER_CLANN] CLANN inválido:', clan);
+      return;
+    }
+
+    console.log('🚪 Entrando no CLANN diretamente:', clan.id);
+
+    // 🔥 NAVEGAÇÃO DIRETA — SEM DEPENDÊNCIAS
+    // Não aguarda Gateway, Security, RuleEnforcement, DeviceTrust, ou qualquer .transaction()
+    navigation.navigate('ClanChat', {
+      clanId: clan.id,
+      clanName: clan.name,
+      clan: clan, // Passa o objeto completo para evitar busca no banco
+      role: clan.role || 'member'
+    });
   };
 
   const renderEmptyState = () => {

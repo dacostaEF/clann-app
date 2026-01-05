@@ -176,22 +176,28 @@ export async function getTotemStats() {
         await messagesStorage.init();
         
         if (messagesStorage.db) {
-          messagesSent = await new Promise((resolve) => {
-            messagesStorage.db.transaction(tx => {
-              tx.executeSql(
-                `SELECT COUNT(*) as count FROM clan_messages WHERE author_totem = ?;`,
-                [totemId],
-                (_, { rows }) => {
-                  const count = rows.length > 0 ? rows.item(0).count : 0;
-                  resolve(count);
-                },
-                (_, error) => {
-                  console.warn('Erro ao contar mensagens:', error);
-                  resolve(0);
-                }
-              );
+          // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+          if (typeof messagesStorage.db.execAsync !== 'function') {
+            console.warn('SQLite async API não disponível — ignorando operação totemStorage countMessages');
+            messagesSent = 0;
+          } else {
+            messagesSent = await new Promise((resolve) => {
+              messagesStorage.db.transaction(tx => {
+                tx.executeSql(
+                  `SELECT COUNT(*) as count FROM clan_messages WHERE author_totem = ?;`,
+                  [totemId],
+                  (_, { rows }) => {
+                    const count = rows.length > 0 ? rows.item(0).count : 0;
+                    resolve(count);
+                  },
+                  (_, error) => {
+                    console.warn('Erro ao contar mensagens:', error);
+                    resolve(0);
+                  }
+                );
+              });
             });
-          });
+          }
         }
       }
     } catch (error) {

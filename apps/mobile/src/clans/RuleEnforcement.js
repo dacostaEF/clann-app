@@ -74,6 +74,13 @@ export class EnforcementResult {
  */
 export async function checkAction(clanId, actionType, context = {}) {
   try {
+    // ✅ SOFT-FAIL: Verificar se banco está disponível
+    const db = ClanStorage.getDB();
+    if (!db || typeof db.runAsync !== 'function') {
+      console.warn('[SOFT-FAIL] RuleEnforcement desativado por banco indisponível');
+      return EnforcementResult.allow(); // Permite ação se banco não disponível
+    }
+
     const activeRules = await getActiveRules(clanId);
     
     if (!activeRules || activeRules.length === 0) {
@@ -100,27 +107,32 @@ export async function checkAction(clanId, actionType, context = {}) {
     if (violatedRules.length > 0) {
       const reason = `Ação bloqueada por ${violatedRules.length} regra(s) ativa(s)`;
       
-      // Log da violação
-      await logSecurityEvent(
-        SECURITY_EVENTS.CLAN_UPDATED,
-        {
-          type: 'rule_violation',
-          clanId,
-          actionType,
-          violatedRules: violatedRules.map(v => v.ruleId),
-          userTotem,
-          context
-        },
-        userTotem
-      );
+      // Log da violação (soft-fail: não bloqueia se falhar)
+      try {
+        await logSecurityEvent(
+          SECURITY_EVENTS.CLAN_UPDATED,
+          {
+            type: 'rule_violation',
+            clanId,
+            actionType,
+            violatedRules: violatedRules.map(v => v.ruleId),
+            userTotem,
+            context
+          },
+          userTotem
+        );
+      } catch (logError) {
+        // Ignora erro de log, não bloqueia a ação
+        console.warn('[SOFT-FAIL] RuleEnforcement: Erro ao logar violação, ignorando');
+      }
 
       return EnforcementResult.deny(reason, violatedRules);
     }
 
     return EnforcementResult.allow();
   } catch (error) {
-    console.error('Erro ao verificar enforcement:', error);
-    // Em caso de erro, permite a ação (fail-open para não bloquear o sistema)
+    // ✅ SOFT-FAIL: Em caso de erro, permite a ação (fail-open)
+    console.warn('[SOFT-FAIL] RuleEnforcement: Erro ao verificar, permitindo ação:', error.message);
     return EnforcementResult.allow();
   }
 }
@@ -301,17 +313,26 @@ function extractForbiddenWords(ruleText) {
  * @returns {Promise<*>} Resultado da ação ou erro se bloqueado
  */
 export async function enforceAndExecute(clanId, actionType, context, actionFn) {
-  const result = await checkAction(clanId, actionType, context);
-  
-  if (!result.allowed) {
-    const error = new Error(result.reason);
-    error.violatedRules = result.violatedRules;
-    error.enforcementBlocked = true;
-    throw error;
-  }
+  try {
+    const result = await checkAction(clanId, actionType, context);
+    
+    if (!result.allowed) {
+      const error = new Error(result.reason);
+      error.violatedRules = result.violatedRules;
+      error.enforcementBlocked = true;
+      throw error;
+    }
 
-  // Se permitido, executa a ação
-  return await actionFn();
+    // Se permitido, executa a ação
+    return await actionFn();
+  } catch (error) {
+    // ✅ SOFT-FAIL: Se enforcement falhar, permite ação (fail-open)
+    if (!error.enforcementBlocked) {
+      console.warn('[SOFT-FAIL] RuleEnforcement: Erro ao executar enforcement, permitindo ação:', error.message);
+      return await actionFn(); // Executa ação mesmo se enforcement falhar
+    }
+    throw error; // Re-lança apenas se foi bloqueio intencional
+  }
 }
 
 /**

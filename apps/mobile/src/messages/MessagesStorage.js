@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as SQLite from 'expo-sqlite';
+import ClanStorage from '../clans/ClanStorage';
 
 // Chave para localStorage na Web
 const WEB_MESSAGES_KEY = 'clann_messages';
@@ -103,6 +104,12 @@ class MessagesStorage {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação MessagesStorage.addMessage');
+      return Promise.reject(new Error('SQLite async API não disponível'));
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(
@@ -175,6 +182,12 @@ class MessagesStorage {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação MessagesStorage.getMessagesSince');
+      return Promise.resolve([]);
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         // Busca mensagens mais recentes que lastTimestamp
@@ -223,6 +236,12 @@ class MessagesStorage {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação MessagesStorage.getMessages');
+      return Promise.resolve([]);
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         // Remove mensagens expiradas primeiro
@@ -276,6 +295,12 @@ class MessagesStorage {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação MessagesStorage.updateMessage');
+      return Promise.reject(new Error('SQLite async API não disponível'));
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         // Construir query dinamicamente baseado nos updates
@@ -355,6 +380,12 @@ class MessagesStorage {
 
     // No SQLite, usa transação única para inserir todas
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação MessagesStorage.bulkAddMessages');
+      return Promise.reject(new Error('SQLite async API não disponível'));
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         const insertedMessages = [];
@@ -465,6 +496,12 @@ class MessagesStorage {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação MessagesStorage.clearMessages');
+      return Promise.resolve(true);
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(
@@ -475,6 +512,126 @@ class MessagesStorage {
         );
       });
     });
+  }
+}
+
+// ============================================================
+// PASSO 4 — FUNÇÕES ASYNC PARA HISTÓRICO DE MENSAGENS
+// ============================================================
+
+/**
+ * Helper para obter DB de forma segura (soft-fail)
+ * @returns {Object|null} Database instance ou null
+ */
+function getDBOrNull() {
+  try {
+    const db = ClanStorage.getDB?.();
+    if (!db || typeof db.runAsync !== 'function' || typeof db.getAllAsync !== 'function') {
+      console.warn('[SOFT-FAIL][MessagesStorage] DB async indisponível');
+      return null;
+    }
+    return db;
+  } catch (err) {
+    console.warn('[SOFT-FAIL][MessagesStorage] getDBOrNull:', err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Garante que a tabela de mensagens existe (async)
+ * @returns {Promise<boolean|null>} true se criada, null se erro
+ */
+export async function ensureMessagesTable() {
+  try {
+    const db = getDBOrNull();
+    if (!db) return null;
+
+    // A tabela já existe em ClanStorage, apenas garantir que está criada
+    // Usar estrutura compatível com a tabela existente
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS clan_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clan_id INTEGER NOT NULL,
+        author_totem TEXT,
+        message TEXT,
+        timestamp INTEGER,
+        self_destruct_at INTEGER,
+        burn_after_read INTEGER,
+        reactions TEXT,
+        delivered_to TEXT,
+        read_by TEXT,
+        edited INTEGER,
+        deleted INTEGER,
+        original_content TEXT,
+        edited_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_clan_messages_clan_id ON clan_messages (clan_id);
+      CREATE INDEX IF NOT EXISTS idx_clan_messages_timestamp ON clan_messages (timestamp);
+    `);
+
+    return true;
+  } catch (err) {
+    console.warn('[SOFT-FAIL][MessagesStorage] ensureMessagesTable:', err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Salva uma mensagem no banco (async)
+ * @param {Object} params - { clanId, messageId, senderTotem, content, createdAt }
+ * @returns {Promise<boolean|null>} true se salvo, null se erro
+ */
+export async function saveClanMessage({ clanId, messageId, senderTotem, content, createdAt }) {
+  try {
+    const db = getDBOrNull();
+    if (!db) return null;
+
+    await ensureMessagesTable();
+
+    await db.runAsync(
+      `INSERT INTO clan_messages (clan_id, author_totem, message, timestamp)
+       VALUES (?, ?, ?, ?)`,
+      [
+        clanId,
+        senderTotem || null,
+        content || '',
+        createdAt ? new Date(createdAt).getTime() : Date.now(),
+      ]
+    );
+
+    return true;
+  } catch (err) {
+    console.warn('[SOFT-FAIL][MessagesStorage] saveClanMessage:', err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Carrega histórico de mensagens de um CLANN (async)
+ * @param {number} clanId - ID do CLANN
+ * @param {number} limit - Limite de mensagens (padrão: 200)
+ * @returns {Promise<Array>} Array de mensagens
+ */
+export async function loadClanMessages(clanId, limit = 200) {
+  try {
+    const db = getDBOrNull();
+    if (!db) return [];
+
+    await ensureMessagesTable();
+
+    const rows = await db.getAllAsync(
+      `SELECT id, clan_id, author_totem, message, timestamp
+       FROM clan_messages
+       WHERE clan_id = ? AND deleted = 0
+       ORDER BY timestamp ASC
+       LIMIT ?`,
+      [clanId, limit]
+    );
+
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    console.warn('[SOFT-FAIL][MessagesStorage] loadClanMessages:', err?.message || err);
+    return [];
   }
 }
 

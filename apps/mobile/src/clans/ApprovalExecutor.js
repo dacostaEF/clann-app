@@ -113,6 +113,12 @@ export async function executeApprovedAction(approval) {
       }
     } else {
       // SQLite: atualiza banco
+      // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+      if (!db || typeof db.execAsync !== 'function') {
+        console.warn('SQLite async API não disponível — ignorando operação ApprovalExecutor.markAsExecuted');
+        return Promise.reject(new Error('SQLite async API não disponível'));
+      }
+      
       return new Promise((resolve, reject) => {
         db.transaction(tx => {
           tx.executeSql(
@@ -299,6 +305,12 @@ async function executeMemberPromote(clanId, actionData, requestedBy) {
     };
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação ApprovalExecutor.promoteMember');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
@@ -403,6 +415,12 @@ async function executeClanSettingsChange(clanId, actionData, requestedBy) {
 
   updateValues.push(clanId);
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação ApprovalExecutor.updateSettings');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
@@ -487,10 +505,16 @@ export async function checkAndExecuteApprovedActions(clanId) {
     return executed;
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação ApprovalExecutor.executePending');
+    return Promise.resolve([]);
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
-        `SELECT * FROM pending_approvals 
+        `SELECT * FROM pending_approvals
          WHERE clan_id = ? AND status = ? AND executed = 0;`,
         [clanId, APPROVAL_STATUS.APPROVED],
         async (_, { rows }) => {

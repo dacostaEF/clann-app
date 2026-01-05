@@ -67,6 +67,18 @@ export async function getRules(clanId) {
     return Promise.resolve(rules.filter(r => r.clan_id === parseInt(clanId)));
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RulesEngine.getRules');
+    return Promise.resolve([]);
+  }
+  
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RulesEngine');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
 
     db.transaction(tx => {
@@ -139,6 +151,12 @@ export async function createRule(clanId, text, approvedBy = null, category = nul
     return Promise.resolve(newRule);
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RulesEngine.getActiveRules');
+    return Promise.resolve([]);
+  }
+  
   return new Promise((resolve, reject) => {
 
       db.transaction(tx => {
@@ -283,6 +301,12 @@ export async function approveRule(ruleId, approverTotem) {
       currentApprovals.push(approverTotem);
     }
 
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação RulesEngine.approveRule');
+      return Promise.reject(new Error('SQLite async API não disponível'));
+    }
+
     // Ativa se tiver 2+ aprovações
     const enabled = currentApprovals.length >= 2 ? 1 : 0;
 
@@ -363,6 +387,12 @@ export async function toggleRule(ruleId, enabled) {
     return Promise.resolve(rules[index]);
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RulesEngine');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
 
     db.transaction(tx => {
@@ -410,6 +440,12 @@ export async function deleteRule(ruleId, deletedBy = null) {
     return Promise.resolve();
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RulesEngine.deleteRule');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       // Busca regra antes de deletar para salvar histórico
@@ -474,6 +510,12 @@ async function saveRuleHistory(ruleId, version, text, changedBy, changeType, old
     return Promise.resolve();
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RulesEngine.saveRuleHistory');
+    return Promise.resolve();
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(

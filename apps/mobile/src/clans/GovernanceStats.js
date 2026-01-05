@@ -295,6 +295,12 @@ async function getClanMembers(clanId) {
     return members.filter(m => m.clan_id === parseInt(clanId));
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação GovernanceStats.getClanMembers');
+    return Promise.resolve([]);
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(

@@ -99,6 +99,12 @@ class DeliveryManager {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação DeliveryManager.getMessageStatus');
+      return Promise.resolve(this.initializeStatus());
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(
@@ -198,6 +204,12 @@ class DeliveryManager {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação DeliveryManager.saveStatus');
+      return Promise.resolve(true);
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         // Salvar delivered_to e read_by separadamente

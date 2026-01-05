@@ -93,6 +93,12 @@ export async function initDefaultTemplates() {
     return Promise.resolve();
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RuleTemplates.initTemplates');
+    return Promise.resolve();
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       let completed = 0;
@@ -142,6 +148,12 @@ export async function getTemplates(category = null) {
     return Promise.resolve(templates);
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RuleTemplates.getTemplates');
+    return Promise.resolve([]);
+  }
+  
   return new Promise((resolve, reject) => {
     let sql = `SELECT * FROM rule_templates ORDER BY created_at DESC;`;
     let params = [];
@@ -173,6 +185,12 @@ export async function getTemplate(templateId) {
     return Promise.resolve(template || null);
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RuleTemplates.getTemplate');
+    return Promise.resolve(null);
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
@@ -214,6 +232,12 @@ export async function createTemplate(name, text, category, description = null) {
     return Promise.resolve(newTemplate);
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação RuleTemplates.createTemplate');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(

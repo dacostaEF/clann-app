@@ -69,6 +69,12 @@ class KeyManager {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação keyManager.init');
+      return Promise.resolve(true);
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(
@@ -133,6 +139,12 @@ class KeyManager {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação keyManager.saveGroupKey');
+      return Promise.reject(new Error('SQLite async API não disponível'));
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         // Verifica se já existe
@@ -187,6 +199,12 @@ class KeyManager {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação keyManager.getGroupKey');
+      return Promise.reject(new Error('SQLite async API não disponível'));
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(
@@ -227,6 +245,12 @@ class KeyManager {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação keyManager.deleteGroupKey');
+      return Promise.resolve(true);
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(

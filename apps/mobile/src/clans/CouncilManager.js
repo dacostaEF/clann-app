@@ -49,6 +49,12 @@ export async function initCouncil(clanId, founderTotem) {
     });
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação CouncilManager.createCouncil');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       // Verifica se já existe
@@ -110,6 +116,12 @@ export async function getCouncil(clanId) {
     });
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação CouncilManager.getCouncil');
+    return Promise.resolve(null);
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
@@ -139,10 +151,23 @@ export async function getCouncil(clanId) {
  * @returns {Promise<boolean>}
  */
 export async function isElder(clanId, totemId) {
-  const council = await getCouncil(clanId);
-  if (!council) return false;
-  
-  return council.elders.includes(totemId);
+  try {
+    // ✅ SOFT-FAIL: Se banco não disponível, retorna false (não é elder)
+    const db = ClanStorage.getDB();
+    if (!db || typeof db.runAsync !== 'function') {
+      console.warn('[SOFT-FAIL] CouncilManager: Banco indisponível, retornando false para isElder');
+      return false; // Retorna false silenciosamente
+    }
+
+    const council = await getCouncil(clanId);
+    if (!council) return false;
+    
+    return council.elders.includes(totemId);
+  } catch (error) {
+    // ✅ SOFT-FAIL: Em caso de erro, retorna false
+    console.warn('[SOFT-FAIL] CouncilManager: Erro ao verificar isElder, retornando false:', error.message);
+    return false;
+  }
 }
 
 /**
@@ -154,9 +179,18 @@ export async function isElder(clanId, totemId) {
  * @returns {Promise<Object>} Conselho atualizado ou solicitação criada
  */
 export async function addElder(clanId, newElderTotem, requestedBy, requireApproval = true) {
+  // ✅ SOFT-FAIL: Verificar se banco está disponível
+  const db = ClanStorage.getDB();
+  if (!db || typeof db.runAsync !== 'function') {
+    console.warn('[SOFT-FAIL] CouncilManager: Banco indisponível, ignorando addElder');
+    return null; // Retorna null silenciosamente
+  }
+
   const council = await getCouncil(clanId);
   if (!council) {
-    throw new Error('Conselho não encontrado. O CLANN precisa ter um conselho inicializado.');
+    // ✅ SOFT-FAIL: Não lança erro, apenas retorna null
+    console.warn('[SOFT-FAIL] CouncilManager: Conselho não encontrado, ignorando addElder');
+    return null;
   }
 
   // Verifica se já é ancião
@@ -194,9 +228,18 @@ export async function addElder(clanId, newElderTotem, requestedBy, requireApprov
  * @returns {Promise<Object>} Conselho atualizado ou solicitação criada
  */
 export async function removeElder(clanId, elderTotem, requestedBy, requireApproval = true) {
+  // ✅ SOFT-FAIL: Verificar se banco está disponível
+  const db = ClanStorage.getDB();
+  if (!db || typeof db.runAsync !== 'function') {
+    console.warn('[SOFT-FAIL] CouncilManager: Banco indisponível, ignorando removeElder');
+    return null; // Retorna null silenciosamente
+  }
+
   const council = await getCouncil(clanId);
   if (!council) {
-    throw new Error('Conselho não encontrado');
+    // ✅ SOFT-FAIL: Não lança erro, apenas retorna null
+    console.warn('[SOFT-FAIL] CouncilManager: Conselho não encontrado, ignorando removeElder');
+    return null;
   }
 
   // Não pode remover o fundador
@@ -272,6 +315,12 @@ async function updateCouncilElders(clanId, elders, updatedBy) {
     });
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação CouncilManager.addElder');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
@@ -354,6 +403,12 @@ export async function setApprovalsRequired(clanId, approvalsRequired, updatedBy)
     return Promise.resolve(councils[index]);
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação CouncilManager.setApprovalsRequired');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
@@ -411,6 +466,12 @@ export async function getClanMembers(clanId) {
     );
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação CouncilManager.getElders');
+    return Promise.resolve([]);
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(

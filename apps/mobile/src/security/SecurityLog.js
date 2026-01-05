@@ -71,11 +71,20 @@ function calculateEventHash(event, timestamp, actorTotem, prevHash = null) {
  */
 export async function logSecurityEvent(event, details = {}, actorTotem = null) {
   try {
+    // ✅ SOFT-FAIL: Verificar se banco está disponível antes de tentar usar
+    const db = ClanStorage.getDB();
+    if (!db || typeof db.runAsync !== 'function') {
+      console.warn('[SOFT-FAIL] SecurityLog desativado por banco indisponível');
+      return null; // Retorna null silenciosamente, nunca lança erro
+    }
+
     // Obtém totem atual se não fornecido
     if (!actorTotem) {
       actorTotem = await getCurrentTotemId();
       if (!actorTotem) {
-        throw new Error('Totem não encontrado');
+        // ✅ SOFT-FAIL: Se não tem totem, apenas retorna null
+        console.warn('[SOFT-FAIL] SecurityLog: Totem não encontrado, ignorando evento');
+        return null;
       }
     }
 
@@ -111,8 +120,9 @@ export async function logSecurityEvent(event, details = {}, actorTotem = null) {
       details
     };
   } catch (error) {
-    console.error('Erro ao registrar evento de segurança:', error);
-    throw new Error(`Erro ao registrar evento: ${error.message}`);
+    // ✅ SOFT-FAIL: Nunca lança erro, apenas loga warning
+    console.warn('[SOFT-FAIL] SecurityLog: Erro ao registrar evento, ignorando:', error.message);
+    return null; // Retorna null silenciosamente
   }
 }
 

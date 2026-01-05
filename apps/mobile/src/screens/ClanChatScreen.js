@@ -14,6 +14,7 @@ import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/nativ
 import { LinearGradient } from 'expo-linear-gradient';
 import ClanStorage from '../clans/ClanStorage';
 import MessagesManager from '../messages/MessagesManager';
+import { loadClanMessages, saveClanMessage } from '../messages/MessagesStorage';
 import { getCurrentTotemId } from '../crypto/totemStorage';
 import ChatHeader from '../components/chat/ChatHeader';
 import MessageBubble from '../components/chat/MessageBubble';
@@ -29,7 +30,17 @@ import { canDeleteMessage } from '../clans/permissions';
 export default function ClanChatScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { clanId, clan: clanFromParams } = route.params || {};
+  const { clanId, clanName, clan: clanFromParams, role } = route.params || {};
+  
+  // PASSO 3 — PROTEÇÃO FINAL: Garantir que clanId existe
+  if (!clanId) {
+    console.error('[ClanChat] clanId ausente — retornando');
+    // Usa setTimeout para evitar erro de navegação durante render
+    setTimeout(() => {
+      navigation.goBack();
+    }, 0);
+    return null;
+  }
   
   const [clan, setClan] = useState(clanFromParams || null);
   const [messages, setMessages] = useState([]);
@@ -57,29 +68,40 @@ export default function ClanChatScreen() {
     });
   }, []);
 
-  // Inicialização
+  // PASSO 3 — Inicialização com módulos avançados opcionais
   useEffect(() => {
-    // Inicializar MessagesManager (só uma vez)
+    // Inicializar MessagesManager (só uma vez) - opcional
     MessagesManager.init().catch(error => {
-      console.error('Erro ao inicializar MessagesManager:', error);
+      console.warn('[ClanChat] MessagesManager não disponível, continuando sem ele:', error.message);
     });
 
-    // Carregar totemId atual e role (Sprint 8 - ETAPA 2)
+    // Carregar totemId atual e role (Sprint 8 - ETAPA 2) - opcional
     const loadTotemIdAndRole = async () => {
       try {
         const totemId = await getCurrentTotemId();
         if (totemId) {
           setCurrentTotemId(prev => prev !== totemId ? totemId : prev);
           
-          // Carregar role do usuário no CLANN
+          // Carregar role do usuário no CLANN - opcional
           const targetClanId = clanId || clanFromParams?.id;
           if (targetClanId) {
-            const role = await ClanStorage.getUserRole(targetClanId, totemId);
-            setUserRole(prev => prev !== role ? role : prev);
+            try {
+              const role = await ClanStorage.getUserRole(targetClanId, totemId);
+              setUserRole(prev => prev !== role ? role : prev);
+            } catch (roleError) {
+              // Se não conseguir carregar role, usa role dos params ou 'member'
+              setUserRole(role || 'member');
+              console.warn('[ClanChat] Erro ao carregar role, usando padrão:', roleError.message);
+            }
           }
+        } else {
+          // Se não tiver totemId, usa role dos params
+          setUserRole(role || 'member');
         }
       } catch (error) {
-        console.error('Erro ao carregar totemId/role:', error);
+        // ✅ SOFT-FAIL: Não bloqueia renderização
+        console.warn('[ClanChat] Erro ao carregar totemId/role, usando padrão:', error.message);
+        setUserRole(role || 'member');
       }
     };
     loadTotemIdAndRole();
@@ -102,6 +124,48 @@ export default function ClanChatScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clanId, clanFromParams?.id]);
 
+  // PASSO 4 — Carregar histórico de mensagens ao entrar no chat
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        if (!clanId) return;
+
+        console.log('[CHAT] carregando histórico do clan', clanId);
+
+        const history = await loadClanMessages(clanId, 200);
+        if (!alive) return;
+
+        // Adaptar para o formato que o UI usa
+        const mapped = history.map(r => ({
+          id: String(r.id),
+          text: r.message || '',
+          message: r.message || '',
+          createdAt: r.timestamp ? new Date(r.timestamp) : new Date(),
+          timestamp: r.timestamp || Date.now(),
+          authorTotem: r.author_totem || null,
+          senderTotem: r.author_totem || null,
+        }));
+
+        // Se já tiver mensagens carregadas, mesclar (evitar duplicatas)
+        setMessages(prevMessages => {
+          const existingIds = new Set(prevMessages.map(m => m.id));
+          const newMessages = mapped.filter(m => !existingIds.has(m.id));
+          return [...prevMessages, ...newMessages].sort((a, b) => 
+            (a.timestamp || 0) - (b.timestamp || 0)
+          );
+        });
+
+        console.log(`[CHAT] histórico carregado: ${mapped.length} msgs`);
+      } catch (err) {
+        console.warn('[SOFT-FAIL][ClanChat] load history:', err?.message || err);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [clanId]);
+
   // Carregar mensagens quando o CLANN estiver disponível
   useEffect(() => {
     if (clan?.id && currentTotemId) {
@@ -110,6 +174,7 @@ export default function ClanChatScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clan?.id, currentTotemId]);
 
+  // PASSO 3 — loadClan opcional (não bloqueia renderização)
   const loadClan = async () => {
     try {
       const data = await ClanStorage.getClanById(clanId);
@@ -118,7 +183,16 @@ export default function ClanChatScreen() {
         setMemberCount(data.members);
       }
     } catch (err) {
-      console.error('Erro ao carregar CLANN:', err);
+      // ✅ SOFT-FAIL: Se não conseguir carregar do banco, usa dados dos params
+      console.warn('[ClanChat] Erro ao carregar CLANN do banco, usando dados dos params:', err.message);
+      // Se tiver clanName nos params, cria objeto mínimo
+      if (clanName) {
+        setClan({
+          id: clanId,
+          name: clanName,
+          role: role || 'member'
+        });
+      }
     }
   };
 
@@ -300,33 +374,54 @@ export default function ClanChatScreen() {
     }
   }, [clan?.id, currentTotemId]);
 
-  // ✅ NOVO: Registrar handler do Gateway e callback para atualizar UI
+  // PASSO 3 — Gateway e módulos avançados opcionais (não bloqueiam renderização)
   useEffect(() => {
     if (!clan?.id) return;
 
     console.log(`📡 Configurando listeners para CLANN ${clan.id}`);
 
-    // 1. Registrar handler no Gateway (se disponível)
-    if (MessagesManager.isGatewayAvailable()) {
-      MessagesManager.registerClannGatewayHandler(clan.id);
+    // 1. Registrar handler no Gateway (se disponível) - opcional
+    try {
+      if (MessagesManager.isGatewayAvailable && typeof MessagesManager.isGatewayAvailable === 'function') {
+        if (MessagesManager.isGatewayAvailable()) {
+          MessagesManager.registerClannGatewayHandler(clan.id);
+        }
+      }
+    } catch (gatewayError) {
+      // ✅ SOFT-FAIL: Gateway não disponível, continua sem ele
+      console.warn('[ClanChat] Gateway não disponível, continuando sem ele:', gatewayError.message);
     }
 
-    // 2. Registrar callback para atualizar UI quando mensagem chegar
-    const handleNewMessage = (messageData) => {
-      console.log('📬 Nova mensagem recebida, atualizando UI...', messageData);
-      
-      // Apenas recarregar mensagens do storage
-      // (toda lógica de descriptografia já foi feita no MessagesManager)
-      loadMessages();
-    };
+    // 2. Registrar callback para atualizar UI quando mensagem chegar - opcional
+    let unregister = null;
+    try {
+      if (MessagesManager.onNewMessage && typeof MessagesManager.onNewMessage === 'function') {
+        const handleNewMessage = (messageData) => {
+          console.log('📬 Nova mensagem recebida, atualizando UI...', messageData);
+          
+          // Apenas recarregar mensagens do storage
+          // (toda lógica de descriptografia já foi feita no MessagesManager)
+          loadMessages();
+        };
 
-    // Registrar callback
-    const unregister = MessagesManager.onNewMessage(clan.id, handleNewMessage);
+        // Registrar callback
+        unregister = MessagesManager.onNewMessage(clan.id, handleNewMessage);
+      }
+    } catch (callbackError) {
+      // ✅ SOFT-FAIL: Callback não disponível, continua sem ele
+      console.warn('[ClanChat] Callback de mensagens não disponível, continuando sem ele:', callbackError.message);
+    }
 
     // Cleanup: remover callback e handler ao sair
     return () => {
       console.log(`📡 Removendo listeners para CLANN ${clan.id}`);
-      unregister(); // Remove callback
+      try {
+        if (unregister && typeof unregister === 'function') {
+          unregister(); // Remove callback
+        }
+      } catch (cleanupError) {
+        console.warn('[ClanChat] Erro ao limpar listeners:', cleanupError.message);
+      }
       // GatewayClient gerencia cleanup do handler internamente
     };
   }, [clan?.id, loadMessages]);
@@ -403,7 +498,7 @@ export default function ClanChatScreen() {
     
     // 5. Enviar mensagem em background (não bloqueia UI)
     try {
-      await MessagesManager.addMessage(
+      const addedMessage = await MessagesManager.addMessage(
         clan.id,
         currentTotemId,
         textToSend,
@@ -412,6 +507,20 @@ export default function ClanChatScreen() {
           burnAfterRead: savedBurnAfterRead
         }
       );
+      
+      // PASSO 4 — Salvar mensagem no histórico (soft-fail)
+      try {
+        await saveClanMessage({
+          clanId: clan.id,
+          messageId: addedMessage?.id || tempId,
+          senderTotem: currentTotemId,
+          content: textToSend,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (saveErr) {
+        // Soft-fail: não bloqueia o envio
+        console.warn('[SOFT-FAIL][ClanChat] Erro ao salvar no histórico:', saveErr?.message || saveErr);
+      }
       
       // 6. Recarregar mensagens do storage para substituir a otimista pela real
       await loadMessages();

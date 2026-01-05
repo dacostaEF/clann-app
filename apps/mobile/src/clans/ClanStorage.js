@@ -215,304 +215,182 @@ class ClanStorage {
       }
     }
     
-    return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
-
-        // Tabela principal de CLANNs
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS clans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            icon TEXT NOT NULL,
-            description TEXT,
-            invite_code TEXT UNIQUE NOT NULL,
-            privacy TEXT DEFAULT 'public',
-            created_at TEXT NOT NULL,
-            founder_totem TEXT NOT NULL
-          );`
+    try {
+      // ✅ Migrado para API async - execAsync para criação de tabelas
+      await this.db.execAsync(`
+        CREATE TABLE IF NOT EXISTS clans (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          icon TEXT NOT NULL,
+          description TEXT,
+          invite_code TEXT UNIQUE NOT NULL,
+          privacy TEXT DEFAULT 'public',
+          created_at TEXT NOT NULL,
+          founder_totem TEXT NOT NULL
         );
 
-        // Membros do CLANN
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS clan_members (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            clan_id INTEGER NOT NULL,
-            totem_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            joined_at TEXT NOT NULL,
-            FOREIGN KEY (clan_id) REFERENCES clans(id)
-          );`
+        CREATE TABLE IF NOT EXISTS clan_members (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL,
+          totem_id TEXT NOT NULL,
+          role TEXT NOT NULL,
+          joined_at TEXT NOT NULL,
+          FOREIGN KEY (clan_id) REFERENCES clans(id)
         );
 
-        // Atividade do CLANN (para futuros chats e logs)
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS clan_activity (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            clan_id INTEGER NOT NULL,
-            type TEXT NOT NULL,
-            payload TEXT,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (clan_id) REFERENCES clans(id)
-          );`
+        CREATE TABLE IF NOT EXISTS clan_activity (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL,
+          type TEXT NOT NULL,
+          payload TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (clan_id) REFERENCES clans(id)
         );
 
-        // Mensagens do CLANN (Sprint 4 + Sprint 6)
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS clan_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            clan_id INTEGER NOT NULL,
-            author_totem TEXT NOT NULL,
-            message TEXT NOT NULL,
-            timestamp INTEGER NOT NULL,
-            self_destruct_at INTEGER,
-            burn_after_read INTEGER DEFAULT 0,
-            reactions TEXT,
-            delivered_to TEXT,
-            read_by TEXT,
-            edited INTEGER DEFAULT 0,
-            deleted INTEGER DEFAULT 0,
-            original_content TEXT,
-            edited_at INTEGER,
-            FOREIGN KEY (clan_id) REFERENCES clans(id)
-          );`
+        CREATE TABLE IF NOT EXISTS clan_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL,
+          author_totem TEXT NOT NULL,
+          message TEXT NOT NULL,
+          timestamp INTEGER NOT NULL,
+          self_destruct_at INTEGER,
+          burn_after_read INTEGER DEFAULT 0,
+          reactions TEXT,
+          delivered_to TEXT,
+          read_by TEXT,
+          edited INTEGER DEFAULT 0,
+          deleted INTEGER DEFAULT 0,
+          original_content TEXT,
+          edited_at INTEGER,
+          FOREIGN KEY (clan_id) REFERENCES clans(id)
         );
 
-        // Adicionar colunas se não existirem (migration para Sprint 6)
-        tx.executeSql(
-          `ALTER TABLE clan_messages ADD COLUMN self_destruct_at INTEGER;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
-        );
-        
-        tx.executeSql(
-          `ALTER TABLE clan_messages ADD COLUMN burn_after_read INTEGER DEFAULT 0;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
+        CREATE INDEX IF NOT EXISTS idx_messages_clan_id ON clan_messages(clan_id);
+
+        CREATE TABLE IF NOT EXISTS linked_devices (
+          device_id TEXT PRIMARY KEY,
+          totem_id TEXT NOT NULL,
+          public_key TEXT NOT NULL,
+          linked_at INTEGER NOT NULL
         );
 
-        // Adicionar coluna reactions (Sprint 6 - ETAPA 3)
-        tx.executeSql(
-          `ALTER TABLE clan_messages ADD COLUMN reactions TEXT;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
+        CREATE INDEX IF NOT EXISTS idx_linked_devices_totem_id ON linked_devices(totem_id);
+
+        CREATE TABLE IF NOT EXISTS security_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event TEXT NOT NULL,
+          actor_totem TEXT NOT NULL,
+          timestamp INTEGER NOT NULL,
+          prev_hash TEXT,
+          hash TEXT NOT NULL,
+          details TEXT
         );
 
-        // Adicionar colunas de status de entrega (Sprint 6 - ETAPA 4)
-        tx.executeSql(
-          `ALTER TABLE clan_messages ADD COLUMN delivered_to TEXT;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
+        CREATE INDEX IF NOT EXISTS idx_security_log_timestamp ON security_log(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_security_log_actor ON security_log(actor_totem);
+
+        CREATE TABLE IF NOT EXISTS clan_rules (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL,
+          rule_id TEXT NOT NULL,
+          text TEXT NOT NULL,
+          enabled INTEGER DEFAULT 1,
+          version INTEGER DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          approved_by TEXT,
+          category TEXT,
+          template_id TEXT,
+          FOREIGN KEY (clan_id) REFERENCES clans(id)
         );
 
-        tx.executeSql(
-          `ALTER TABLE clan_messages ADD COLUMN read_by TEXT;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
+        CREATE TABLE IF NOT EXISTS rule_templates (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          template_id TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          text TEXT NOT NULL,
+          category TEXT,
+          description TEXT,
+          created_at INTEGER NOT NULL
         );
 
-        // Adicionar colunas de edição/exclusão (Sprint 6 - ETAPA 5)
-        tx.executeSql(
-          `ALTER TABLE clan_messages ADD COLUMN edited INTEGER DEFAULT 0;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
+        CREATE TABLE IF NOT EXISTS rule_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          rule_id TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          text TEXT NOT NULL,
+          changed_by TEXT,
+          changed_at INTEGER NOT NULL,
+          change_type TEXT,
+          FOREIGN KEY (rule_id) REFERENCES clan_rules(rule_id)
         );
 
-        tx.executeSql(
-          `ALTER TABLE clan_messages ADD COLUMN deleted INTEGER DEFAULT 0;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
+        CREATE INDEX IF NOT EXISTS idx_rule_history_rule_id ON rule_history(rule_id);
+        CREATE INDEX IF NOT EXISTS idx_clan_rules_category ON clan_rules(category);
+
+        CREATE TABLE IF NOT EXISTS clan_council (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL UNIQUE,
+          founder_totem TEXT NOT NULL,
+          elders TEXT,
+          approvals_required INTEGER DEFAULT 2,
+          FOREIGN KEY (clan_id) REFERENCES clans(id)
         );
 
-        tx.executeSql(
-          `ALTER TABLE clan_messages ADD COLUMN original_content TEXT;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
+        CREATE TABLE IF NOT EXISTS pending_approvals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL,
+          action_type TEXT NOT NULL,
+          action_data TEXT,
+          requested_by TEXT NOT NULL,
+          approvals TEXT,
+          rejections TEXT,
+          status TEXT DEFAULT 'pending',
+          created_at INTEGER NOT NULL,
+          executed INTEGER DEFAULT 0,
+          executed_at INTEGER,
+          FOREIGN KEY (clan_id) REFERENCES clans(id)
         );
 
-        tx.executeSql(
-          `ALTER TABLE clan_messages ADD COLUMN edited_at INTEGER;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
-        );
+        CREATE INDEX IF NOT EXISTS idx_clan_rules_clan_id ON clan_rules(clan_id);
+        CREATE INDEX IF NOT EXISTS idx_pending_approvals_clan_id ON pending_approvals(clan_id);
+      `);
 
-        // Índice para performance nas queries de mensagens
-        tx.executeSql(
-          `CREATE INDEX IF NOT EXISTS idx_messages_clan_id ON clan_messages(clan_id);`
-        );
+      // ✅ Migrado para API async - ALTER TABLE com try/catch para ignorar erros
+      const alterTableQueries = [
+        `ALTER TABLE clan_messages ADD COLUMN self_destruct_at INTEGER;`,
+        `ALTER TABLE clan_messages ADD COLUMN burn_after_read INTEGER DEFAULT 0;`,
+        `ALTER TABLE clan_messages ADD COLUMN reactions TEXT;`,
+        `ALTER TABLE clan_messages ADD COLUMN delivered_to TEXT;`,
+        `ALTER TABLE clan_messages ADD COLUMN read_by TEXT;`,
+        `ALTER TABLE clan_messages ADD COLUMN edited INTEGER DEFAULT 0;`,
+        `ALTER TABLE clan_messages ADD COLUMN deleted INTEGER DEFAULT 0;`,
+        `ALTER TABLE clan_messages ADD COLUMN original_content TEXT;`,
+        `ALTER TABLE clan_messages ADD COLUMN edited_at INTEGER;`,
+        `ALTER TABLE clan_rules ADD COLUMN category TEXT;`,
+        `ALTER TABLE clan_rules ADD COLUMN template_id TEXT;`,
+        `ALTER TABLE pending_approvals ADD COLUMN executed INTEGER DEFAULT 0;`,
+        `ALTER TABLE pending_approvals ADD COLUMN executed_at INTEGER;`
+      ];
 
-        // Tabela de dispositivos vinculados (Sprint 7 - ETAPA 1)
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS linked_devices (
-            device_id TEXT PRIMARY KEY,
-            totem_id TEXT NOT NULL,
-            public_key TEXT NOT NULL,
-            linked_at INTEGER NOT NULL
-          );`
-        );
+      for (const query of alterTableQueries) {
+        try {
+          await this.db.execAsync(query);
+        } catch (error) {
+          // Ignora erro se coluna já existe
+        }
+      }
 
-        // Índice para performance nas queries de dispositivos
-        tx.executeSql(
-          `CREATE INDEX IF NOT EXISTS idx_linked_devices_totem_id ON linked_devices(totem_id);`
-        );
-
-        // Tabela de log de segurança com hash-chain (Sprint 7 - ETAPA 3)
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS security_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event TEXT NOT NULL,
-            actor_totem TEXT NOT NULL,
-            timestamp INTEGER NOT NULL,
-            prev_hash TEXT,
-            hash TEXT NOT NULL,
-            details TEXT
-          );`
-        );
-
-        // Índice para performance nas queries de log
-        tx.executeSql(
-          `CREATE INDEX IF NOT EXISTS idx_security_log_timestamp ON security_log(timestamp DESC);`
-        );
-        tx.executeSql(
-          `CREATE INDEX IF NOT EXISTS idx_security_log_actor ON security_log(actor_totem);`
-        );
-
-        // Tabela de regras do CLANN (Sprint 7 - Governança - ETAPA 1)
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS clan_rules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            clan_id INTEGER NOT NULL,
-            rule_id TEXT NOT NULL,
-            text TEXT NOT NULL,
-            enabled INTEGER DEFAULT 1,
-            version INTEGER DEFAULT 1,
-            created_at INTEGER NOT NULL,
-            approved_by TEXT,
-            category TEXT,
-            template_id TEXT,
-            FOREIGN KEY (clan_id) REFERENCES clans(id)
-          );`
-        );
-
-        // Adicionar colunas de categoria e template (ETAPA 2 - Migration)
-        tx.executeSql(
-          `ALTER TABLE clan_rules ADD COLUMN category TEXT;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
-        );
-        tx.executeSql(
-          `ALTER TABLE clan_rules ADD COLUMN template_id TEXT;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
-        );
-
-        // Tabela de templates de regras (Sprint 7 - Governança - ETAPA 2)
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS rule_templates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            template_id TEXT UNIQUE NOT NULL,
-            name TEXT NOT NULL,
-            text TEXT NOT NULL,
-            category TEXT,
-            description TEXT,
-            created_at INTEGER NOT NULL
-          );`
-        );
-
-        // Tabela de histórico de versões das regras (Sprint 7 - Governança - ETAPA 2)
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS rule_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            rule_id TEXT NOT NULL,
-            version INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            changed_by TEXT,
-            changed_at INTEGER NOT NULL,
-            change_type TEXT,
-            FOREIGN KEY (rule_id) REFERENCES clan_rules(rule_id)
-          );`
-        );
-
-        // Índices para performance
-        tx.executeSql(
-          `CREATE INDEX IF NOT EXISTS idx_rule_history_rule_id ON rule_history(rule_id);`
-        );
-        tx.executeSql(
-          `CREATE INDEX IF NOT EXISTS idx_clan_rules_category ON clan_rules(category);`
-        );
-
-        // Tabela de conselho de anciões (Sprint 7 - Governança - ETAPA 1)
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS clan_council (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            clan_id INTEGER NOT NULL UNIQUE,
-            founder_totem TEXT NOT NULL,
-            elders TEXT,
-            approvals_required INTEGER DEFAULT 2,
-            FOREIGN KEY (clan_id) REFERENCES clans(id)
-          );`
-        );
-
-        // Tabela de aprovações pendentes (Sprint 7 - Governança - ETAPA 4)
-        tx.executeSql(
-          `CREATE TABLE IF NOT EXISTS pending_approvals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            clan_id INTEGER NOT NULL,
-            action_type TEXT NOT NULL,
-            action_data TEXT,
-            requested_by TEXT NOT NULL,
-            approvals TEXT,
-            rejections TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at INTEGER NOT NULL,
-            executed INTEGER DEFAULT 0,
-            executed_at INTEGER,
-            FOREIGN KEY (clan_id) REFERENCES clans(id)
-          );`
-        );
-
-        // Adiciona colunas de execução se não existirem (migração)
-        tx.executeSql(
-          `ALTER TABLE pending_approvals ADD COLUMN executed INTEGER DEFAULT 0;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
-        );
-        tx.executeSql(
-          `ALTER TABLE pending_approvals ADD COLUMN executed_at INTEGER;`,
-          [],
-          () => {},
-          () => {} // Ignora erro se coluna já existe
-        );
-
-        // Índices para performance
-        tx.executeSql(
-          `CREATE INDEX IF NOT EXISTS idx_clan_rules_clan_id ON clan_rules(clan_id);`
-        );
-        tx.executeSql(
-          `CREATE INDEX IF NOT EXISTS idx_pending_approvals_clan_id ON pending_approvals(clan_id);`
-        );
-
-      },
-      (error) => reject(error),
-      () => resolve(true));
-    });
+      return true;
+    } catch (error) {
+      console.error('❌ ClanStorage: Erro ao inicializar banco:', error);
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------
   // Criar CLANN
   // ---------------------------------------------------------
-  createClan(data, totemId) {
+  async createClan(data, totemId) {
     if (Platform.OS === 'web' || !this.db) {
       // Na Web, salva no localStorage
       const invite = this._generateInviteCode();
@@ -560,40 +438,39 @@ class ClanStorage {
 
     const invite = this._generateInviteCode();
 
-    return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
-        tx.executeSql(
-          `INSERT INTO clans (name, icon, description, invite_code, privacy, created_at, founder_totem)
-           VALUES (?, ?, ?, ?, ?, datetime('now'), ?);`,
-          [data.name, data.icon, data.description || null, invite, data.privacy || 'public', totemId],
-          (_, result) => {
-            const clanId = result.insertId;
+    // ✅ Migrado para API async - runAsync para INSERTs
+    try {
+      const result = await this.db.runAsync(
+        `INSERT INTO clans (name, icon, description, invite_code, privacy, created_at, founder_totem)
+         VALUES (?, ?, ?, ?, ?, datetime('now'), ?);`,
+        [data.name, data.icon, data.description || null, invite, data.privacy || 'public', totemId]
+      );
 
-            // 🟢 LOG DIAGNÓSTICO: CLANN inserido no banco
-            console.log('🟢 [DB] CLANN inserido', { 
-              clanId: result.insertId, 
-              totemId: totemId 
-            });
+      const clanId = result.lastInsertRowId;
 
-            // Inserir o fundador como membro
-            tx.executeSql(
-              `INSERT INTO clan_members (clan_id, totem_id, role, joined_at)
-               VALUES (?, ?, 'founder', datetime('now'));`,
-              [clanId, totemId]
-            );
-
-            resolve({
-              id: clanId,
-              name: data.name,
-              icon: data.icon,
-              description: data.description,
-              invite_code: invite
-            });
-          },
-          (_, error) => reject(error)
-        );
+      // 🟢 LOG DIAGNÓSTICO: CLANN inserido no banco
+      console.log('🟢 [DB] CLANN inserido', { 
+        clanId: clanId, 
+        totemId: totemId 
       });
-    });
+
+      // Inserir o fundador como membro
+      await this.db.runAsync(
+        `INSERT INTO clan_members (clan_id, totem_id, role, joined_at)
+         VALUES (?, ?, 'founder', datetime('now'));`,
+        [clanId, totemId]
+      );
+
+      return {
+        id: clanId,
+        name: data.name,
+        icon: data.icon,
+        description: data.description,
+        invite_code: invite
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------
@@ -735,7 +612,7 @@ class ClanStorage {
   // ---------------------------------------------------------
   // Buscar CLANNs do usuário
   // ---------------------------------------------------------
-  getUserClans(totemId) {
+  async getUserClans(totemId) {
     if (Platform.OS === 'web' || !this.db) {
       // Na Web, busca no localStorage
       const members = this._getWebMembers();
@@ -771,33 +648,26 @@ class ClanStorage {
       return Promise.resolve(userClans);
     }
 
-    return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
-
-        tx.executeSql(
-          `
-          SELECT c.*, m.role,
-            (SELECT COUNT(*) FROM clan_members WHERE clan_id = c.id) AS members
-          FROM clans c
-          JOIN clan_members m ON m.clan_id = c.id
-          WHERE m.totem_id = ?
-          ORDER BY c.created_at DESC;
-          `,
-          [totemId],
-          (_, { rows }) => {
-            const results = rows._array;
-            
-            // 🗃️ LOG DIAGNÓSTICO FINAL: Query executada (SQLite)
-            console.log('🗃️ [SQL] Query executada para totem_id:', totemId);
-            console.log('🗃️ [SQL] Resultados da query:', results);
-            
-            resolve(results);
-          },
-          (_, err) => reject(err)
-        );
-
-      });
-    });
+    // ✅ Migrado para API async - getAllAsync para SELECT
+    try {
+      const results = await this.db.getAllAsync(
+        `SELECT c.*, m.role,
+          (SELECT COUNT(*) FROM clan_members WHERE clan_id = c.id) AS members
+        FROM clans c
+        JOIN clan_members m ON m.clan_id = c.id
+        WHERE m.totem_id = ?
+        ORDER BY c.created_at DESC;`,
+        [totemId]
+      );
+      
+      // 🗃️ LOG DIAGNÓSTICO FINAL: Query executada (SQLite)
+      console.log('🗃️ [SQL] Query executada para totem_id:', totemId);
+      console.log('🗃️ [SQL] Resultados da query:', results);
+      
+      return results;
+    } catch (error) {
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------

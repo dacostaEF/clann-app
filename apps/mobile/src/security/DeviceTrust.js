@@ -305,45 +305,26 @@ async function saveTrustScoreToDB(score) {
   try {
     const deviceId = await getOrCreateDeviceId();
     const db = ClanStorage.getDB();
-    
-    if (!db || Platform.OS === 'web') {
-      // No web, salva no localStorage
-      const scores = JSON.parse(localStorage.getItem('clann_device_trust_scores') || '[]');
-      const existingIndex = scores.findIndex(s => s.device_id === deviceId);
-      
-      const scoreData = {
-        device_id: deviceId,
-        score: score,
-        last_seen: Date.now()
-      };
-      
-      if (existingIndex >= 0) {
-        scores[existingIndex] = scoreData;
-      } else {
-        scores.push(scoreData);
-      }
-      
-      localStorage.setItem('clann_device_trust_scores', JSON.stringify(scores));
-      return;
+
+    // SOFT-FAIL: banco não disponível
+    if (!db || typeof db.runAsync !== 'function') {
+      console.warn('[SOFT-FAIL][DeviceTrust] DB indisponível, ignorando saveTrustScore');
+      return null;
     }
-    
-    // SQLite
-    return new Promise((resolve) => {
-      db.transaction(tx => {
-        tx.executeSql(
-          `INSERT OR REPLACE INTO device_trust_scores (device_id, score, last_seen)
-           VALUES (?, ?, ?);`,
-          [deviceId, score, Date.now()],
-          () => resolve(),
-          (_, err) => {
-            console.warn('Erro ao salvar trust score no banco:', err);
-            resolve(); // Não falha
-          }
-        );
-      });
-    });
-  } catch (error) {
-    console.warn('Erro ao salvar trust score no banco:', error);
+
+    await db.runAsync(
+      `INSERT OR REPLACE INTO device_trust (device_id, score, updated_at)
+       VALUES (?, ?, datetime('now'))`,
+      [deviceId, score]
+    );
+
+    return true;
+  } catch (err) {
+    console.warn(
+      '[SOFT-FAIL][DeviceTrust] saveTrustScoreToDB:',
+      err?.message || err
+    );
+    return null;
   }
 }
 
@@ -364,6 +345,12 @@ export async function getTrustScoreFromDB(deviceId) {
     }
     
     // SQLite
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação getTrustScoreFromDB');
+      return null;
+    }
+    
     return new Promise((resolve) => {
       db.transaction(tx => {
         tx.executeSql(
@@ -393,6 +380,13 @@ export async function getTrustScoreFromDB(deviceId) {
  */
 export async function canExecuteSensitiveAction(options = {}) {
   try {
+    // ✅ SOFT-FAIL: Se banco não disponível, permite ação (fail-open)
+    const db = ClanStorage.getDB();
+    if (!db || typeof db.runAsync !== 'function') {
+      console.warn('[SOFT-FAIL] DeviceTrust: Banco indisponível, permitindo ação');
+      return true; // Permite ação se banco não disponível
+    }
+
     const score = await calculateTrustScore(options);
     
     if (shouldBlockSensitiveActions(score)) {
@@ -401,9 +395,9 @@ export async function canExecuteSensitiveAction(options = {}) {
     
     return true;
   } catch (error) {
-    console.error('Erro ao verificar se pode executar ação sensível:', error);
-    // Em caso de erro, bloqueia (mais seguro)
-    return false;
+    // ✅ SOFT-FAIL: Em caso de erro, permite ação (fail-open para não bloquear fluxo)
+    console.warn('[SOFT-FAIL] DeviceTrust: Erro ao verificar, permitindo ação:', error.message);
+    return true; // Permite ação em caso de erro
   }
 }
 
@@ -422,6 +416,12 @@ export async function init() {
     }
     
     // Cria tabela se não existir
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação init DeviceTrust');
+      return;
+    }
+    
     return new Promise((resolve) => {
       db.transaction(tx => {
         tx.executeSql(

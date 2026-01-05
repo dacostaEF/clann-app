@@ -458,6 +458,12 @@ export async function resetGovernance(clanId, pin) {
     }
     
     // SQLite: deleta dados
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação AdminTools.clearClanData');
+      return Promise.reject(new Error('SQLite async API não disponível'));
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         // Deleta regras
@@ -554,6 +560,12 @@ export async function resetRules(clanId, pin) {
     }
     
     // SQLite: deleta regras
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação AdminTools.resetRules');
+      return Promise.reject(new Error('SQLite async API não disponível'));
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         // Deleta regras
@@ -633,6 +645,12 @@ export async function resetCouncil(clanId, pin) {
     }
     
     // SQLite: deleta conselho
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação AdminTools.resetCouncil');
+      return Promise.reject(new Error('SQLite async API não disponível'));
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(

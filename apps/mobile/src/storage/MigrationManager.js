@@ -110,6 +110,12 @@ export async function getCurrentVersion() {
     return 0;
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação getCurrentVersion');
+    return 0;
+  }
+  
   return new Promise((resolve) => {
     db.transaction(tx => {
       // Verifica se tabela schema_version existe
@@ -164,6 +170,12 @@ export async function setVersion(version) {
     return;
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação setVersion');
+    return;
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       // Garante que tabela schema_version existe
@@ -251,6 +263,12 @@ async function executeMigration(version) {
     return false;
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação executeMigration');
+    return false;
+  }
+  
   return new Promise((resolve) => {
     if (Platform.OS === 'web') {
       // No web, migrações são apenas versionamento

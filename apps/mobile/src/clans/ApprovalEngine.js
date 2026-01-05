@@ -65,7 +65,13 @@ export async function createApprovalRequest(
   const db = ClanStorage.getDB();
   const timestamp = Date.now();
 
-  if (Platform.OS === 'web' || !db) {
+  // ✅ SOFT-FAIL: Verificar se banco está disponível
+  if (!db || typeof db.runAsync !== 'function') {
+    console.warn('[SOFT-FAIL] ApprovalEngine: Banco indisponível, ignorando createApprovalRequest');
+    return null; // Retorna null silenciosamente, nunca lança erro
+  }
+
+  if (Platform.OS === 'web') {
     // Na Web, salva no localStorage
     const approvals = getWebPendingApprovals();
     const newApproval = {
@@ -97,10 +103,16 @@ export async function createApprovalRequest(
     return Promise.resolve(newApproval);
   }
 
+  // ✅ SOFT-FAIL: Verificar se banco está disponível (já verificado acima, mas mantém compatibilidade)
+  if (!db || typeof db.runAsync !== 'function') {
+    console.warn('[SOFT-FAIL] ApprovalEngine: Banco indisponível, ignorando createApprovalRequest');
+    return null; // Retorna null silenciosamente, nunca lança erro
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
-        `INSERT INTO pending_approvals 
+        `INSERT INTO pending_approvals
          (clan_id, action_type, action_data, requested_by, approvals, rejections, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
         [
@@ -153,9 +165,14 @@ export async function createApprovalRequest(
  * @returns {Promise<Array>} Lista de aprovações
  */
 export async function getPendingApprovals(clanId, status = null) {
+  // ✅ SOFT-FAIL: Verificar se banco está disponível
   const db = ClanStorage.getDB();
+  if (!db || typeof db.runAsync !== 'function') {
+    console.warn('[SOFT-FAIL] ApprovalEngine: Banco indisponível, retornando array vazio para getPendingApprovals');
+    return []; // Retorna array vazio silenciosamente
+  }
 
-  if (Platform.OS === 'web' || !db) {
+  if (Platform.OS === 'web') {
     const approvals = getWebPendingApprovals();
     let filtered = approvals.filter(a => a.clan_id === parseInt(clanId));
     
@@ -172,6 +189,12 @@ export async function getPendingApprovals(clanId, status = null) {
     })).sort((a, b) => b.created_at - a.created_at));
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação ApprovalEngine.getApprovals');
+    return Promise.resolve([]);
+  }
+  
   return new Promise((resolve, reject) => {
     let sql = `SELECT * FROM pending_approvals WHERE clan_id = ?`;
     let params = [clanId];
@@ -209,9 +232,14 @@ export async function getPendingApprovals(clanId, status = null) {
  * @returns {Promise<Object>} Aprovação atualizada
  */
 export async function approveRequest(approvalId, approverTotem) {
+  // ✅ SOFT-FAIL: Verificar se banco está disponível
   const db = ClanStorage.getDB();
+  if (!db || typeof db.runAsync !== 'function') {
+    console.warn('[SOFT-FAIL] ApprovalEngine: Banco indisponível, ignorando approveRequest');
+    return null; // Retorna null silenciosamente
+  }
 
-  if (Platform.OS === 'web' || !db) {
+  if (Platform.OS === 'web') {
     const approvals = getWebPendingApprovals();
     const index = approvals.findIndex(a => a.id === approvalId);
     
@@ -281,6 +309,12 @@ export async function approveRequest(approvalId, approverTotem) {
     return Promise.resolve(updatedApproval);
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação ApprovalEngine.approve');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       // Busca aprovação atual
@@ -375,9 +409,14 @@ export async function approveRequest(approvalId, approverTotem) {
  * @returns {Promise<Object>} Aprovação atualizada
  */
 export async function rejectRequest(approvalId, rejectorTotem) {
+  // ✅ SOFT-FAIL: Verificar se banco está disponível
   const db = ClanStorage.getDB();
+  if (!db || typeof db.runAsync !== 'function') {
+    console.warn('[SOFT-FAIL] ApprovalEngine: Banco indisponível, ignorando rejectRequest');
+    return null; // Retorna null silenciosamente
+  }
 
-  if (Platform.OS === 'web' || !db) {
+  if (Platform.OS === 'web') {
     const approvals = getWebPendingApprovals();
     const index = approvals.findIndex(a => a.id === approvalId);
     
@@ -433,6 +472,12 @@ export async function rejectRequest(approvalId, rejectorTotem) {
     });
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação ApprovalEngine.approve');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       // Busca aprovação atual
@@ -514,9 +559,14 @@ export async function rejectRequest(approvalId, rejectorTotem) {
  * @returns {Promise<void>}
  */
 export async function cancelRequest(approvalId, requesterTotem) {
+  // ✅ SOFT-FAIL: Verificar se banco está disponível
   const db = ClanStorage.getDB();
+  if (!db || typeof db.runAsync !== 'function') {
+    console.warn('[SOFT-FAIL] ApprovalEngine: Banco indisponível, ignorando cancelRequest');
+    return null; // Retorna null silenciosamente
+  }
 
-  if (Platform.OS === 'web' || !db) {
+  if (Platform.OS === 'web') {
     const approvals = getWebPendingApprovals();
     const index = approvals.findIndex(a => a.id === approvalId);
     
@@ -545,6 +595,12 @@ export async function cancelRequest(approvalId, requesterTotem) {
     return Promise.resolve();
   }
 
+  // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+  if (!db || typeof db.execAsync !== 'function') {
+    console.warn('SQLite async API não disponível — ignorando operação ApprovalEngine.cancelApproval');
+    return Promise.reject(new Error('SQLite async API não disponível'));
+  }
+  
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       // Verifica se é o criador

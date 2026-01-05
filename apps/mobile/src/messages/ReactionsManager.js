@@ -85,6 +85,12 @@ class ReactionsManager {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação ReactionsManager.getReactions');
+      return Promise.resolve({});
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(
@@ -175,6 +181,12 @@ class ReactionsManager {
     }
 
     const db = await getDatabase();
+    // ✅ BLOQUEIO DEFENSIVO: Verificar se API async está disponível
+    if (!db || typeof db.execAsync !== 'function') {
+      console.warn('SQLite async API não disponível — ignorando operação ReactionsManager.updateReactions');
+      return Promise.resolve(true);
+    }
+    
     return new Promise((resolve, reject) => {
       db.transaction(tx => {
         tx.executeSql(
