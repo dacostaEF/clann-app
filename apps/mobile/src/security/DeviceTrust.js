@@ -297,6 +297,26 @@ export async function reduceTrustScore(reduction = 10) {
 }
 
 /**
+ * Garante que a tabela device_trust existe (soft-fail)
+ * @param {Object} db - Database instance
+ */
+async function ensureDeviceTrustTable(db) {
+  try {
+    if (!db || typeof db.runAsync !== 'function') return;
+
+    await db.runAsync(`
+      CREATE TABLE IF NOT EXISTS device_trust (
+        device_id TEXT PRIMARY KEY,
+        score INTEGER,
+        updated_at TEXT
+      );
+    `);
+  } catch (err) {
+    console.warn('[SOFT-FAIL][DeviceTrust] ensure table:', err?.message);
+  }
+}
+
+/**
  * Salva score no banco de dados
  * @param {number} score - Score a salvar
  * @returns {Promise<void>}
@@ -311,6 +331,9 @@ async function saveTrustScoreToDB(score) {
       console.warn('[SOFT-FAIL][DeviceTrust] DB indisponível, ignorando saveTrustScore');
       return null;
     }
+
+    // AJUSTE 1 — Garantir que a tabela existe
+    await ensureDeviceTrustTable(db);
 
     await db.runAsync(
       `INSERT OR REPLACE INTO device_trust (device_id, score, updated_at)
@@ -351,6 +374,18 @@ export async function getTrustScoreFromDB(deviceId) {
       return null;
     }
     
+    // AJUSTE 2 — Guard clause para evitar erro em runtime
+    if (!db || typeof db.runAsync !== 'function') {
+      console.warn('[SOFT-FAIL][DeviceTrust] DB async indisponível');
+      return null;
+    }
+
+    // AJUSTE 2 — Guard clause adicional para transaction()
+    if (typeof db.transaction !== 'function') {
+      console.warn('[SOFT-FAIL][DeviceTrust] DB transaction indisponível');
+      return null;
+    }
+
     return new Promise((resolve) => {
       db.transaction(tx => {
         tx.executeSql(
@@ -420,6 +455,12 @@ export async function init() {
     if (!db || typeof db.execAsync !== 'function') {
       console.warn('SQLite async API não disponível — ignorando operação init DeviceTrust');
       return;
+    }
+    
+    // AJUSTE 2 — Guard clause adicional para transaction()
+    if (typeof db.transaction !== 'function') {
+      console.warn('[SOFT-FAIL][DeviceTrust] DB transaction indisponível');
+      return Promise.resolve();
     }
     
     return new Promise((resolve) => {
