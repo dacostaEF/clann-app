@@ -3,8 +3,9 @@ import { View, Text, StyleSheet } from 'react-native';
 import { chatTheme } from '../../styles/chatTheme';
 
 /**
- * Separador de data estilo WhatsApp
- * Exibe "HOJE", "ONTEM" ou a data formatada
+ * Separador de data estilo WhatsApp/Telegram
+ * Exibe "Hoje", "Ontem" ou data formatada amigável (ex: "09 de janeiro")
+ * Fase 3 - Item 3.2: Orientação temporal macro
  */
 export default function DateSeparator({ timestamp }) {
   const formatDate = (ts) => {
@@ -13,21 +14,25 @@ export default function DateSeparator({ timestamp }) {
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    // Resetar horas para comparação
+    // Resetar horas para comparação (apenas data, sem hora)
     const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
 
+    // Comparar datas
     if (dateOnly.getTime() === todayOnly.getTime()) {
-      return 'HOJE';
+      return 'Hoje';
     } else if (dateOnly.getTime() === yesterdayOnly.getTime()) {
-      return 'ONTEM';
+      return 'Ontem';
     } else {
-      // Formatar data: "DD/MM/YYYY"
-      const day = date.getDate().toString().padStart(2, '0');
-      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      const year = date.getFullYear();
-      return `${day}/${month}/${year}`;
+      // Formatar data amigável: "09 de janeiro"
+      const day = date.getDate();
+      const monthNames = [
+        'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+      ];
+      const monthName = monthNames[date.getMonth()];
+      return `${day} de ${monthName}`;
     }
   };
 
@@ -44,19 +49,24 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
+    justifyContent: 'center',
+    paddingVertical: 12,
     paddingHorizontal: 16,
+    marginVertical: 8,
   },
   line: {
     flex: 1,
     height: 1,
     backgroundColor: chatTheme.separatorColor,
+    opacity: 0.5,
   },
   text: {
-    fontSize: 12,
-    color: chatTheme.textTertiary,
-    marginHorizontal: 12,
-    fontWeight: '500',
+    fontSize: 11,
+    color: chatTheme.textTertiary || chatTheme.textSecondary,
+    marginHorizontal: 10,
+    fontWeight: '400',
+    opacity: 0.8,
+    textTransform: 'capitalize',
   },
 });
 
