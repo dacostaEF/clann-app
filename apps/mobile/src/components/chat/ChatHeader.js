@@ -80,9 +80,6 @@ export default function ChatHeader({ clan, onBack, memberCount = 0 }) {
               <Text style={styles.clanName} numberOfLines={1}>
                 {clan?.name || 'CLANN'}
               </Text>
-              <Text style={styles.subtitle} numberOfLines={1}>
-                {memberCount || 0} {memberCount === 1 ? 'membro' : 'membros'} • Modo Seguro: ON
-              </Text>
             </View>
           </View>
 
@@ -160,16 +157,25 @@ export default function ChatHeader({ clan, onBack, memberCount = 0 }) {
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 8,
-    paddingBottom: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: chatTheme.separatorColor,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 8,
+    minHeight: 56,
   },
   backButton: {
     width: 40,
@@ -184,13 +190,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   clanIcon: {
     fontSize: 24,
@@ -199,14 +205,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clanName: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: chatTheme.textPrimary,
-    marginBottom: 2,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: chatTheme.textSecondary,
+    letterSpacing: 0.2,
   },
   menuButton: {
     width: 40,
