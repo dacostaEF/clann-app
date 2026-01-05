@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useMemo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { chatTheme } from '../../styles/chatTheme';
 import ReactionRow from './ReactionRow';
@@ -54,11 +54,24 @@ export default function MessageBubble({
   // Normaliza watermarkedMessage para garantir que seja sempre string (proteção contra text node warning)
   const safeMessage = typeof watermarkedMessage === 'string' ? watermarkedMessage : '';
 
+  // Fade-in suave para mensagens novas (Fase 4.1 - Microinterações)
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Animar opacidade de 0 → 1 com duração curta (180ms)
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
+
   return (
-    <View style={[
+    <Animated.View style={[
       styles.container,
       isSent ? styles.containerSent : styles.containerReceived,
-      isPending && styles.containerPending
+      isPending && styles.containerPending,
+      { opacity: fadeAnim }
     ]}>
       {/* Nome do autor (apenas para mensagens recebidas) */}
       {!isSent && showAuthor && authorName && (
@@ -134,7 +147,7 @@ export default function MessageBubble({
           currentTotemId={currentTotemId}
         />
       )}
-    </View>
+    </Animated.View>
   );
 }
 
