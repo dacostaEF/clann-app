@@ -59,13 +59,10 @@ export default function ClanChatScreen() {
   
   const flatListRef = useRef(null);
 
-  // Função para scroll automático para nova mensagem (lista invertida)
+  // Função para scroll automático para nova mensagem (final da lista)
   const scrollToNewMessage = useCallback(() => {
-    // Para lista invertida, scroll para offset 0 (topo)
-    flatListRef.current?.scrollToOffset({
-      offset: 0,
-      animated: true,
-    });
+    // Scroll para o final da lista (mensagens mais novas)
+    flatListRef.current?.scrollToEnd({ animated: true });
   }, []);
 
   // PASSO 3 — Inicialização com módulos avançados opcionais
@@ -149,6 +146,7 @@ export default function ClanChatScreen() {
         }));
 
         // Se já tiver mensagens carregadas, mesclar (evitar duplicatas)
+        // Ordenar em ordem crescente (antigas primeiro, novas por último) - padrão WhatsApp
         setMessages(prevMessages => {
           const existingIds = new Set(prevMessages.map(m => m.id));
           const newMessages = mapped.filter(m => !existingIds.has(m.id));
@@ -262,8 +260,8 @@ export default function ClanChatScreen() {
           // 4. Combinar mensagens reais mescladas com otimistas pendentes
           const allMessages = [...mergedReals, ...stillPending];
           
-          // 5. Ordenar por timestamp decrescente (mais novas primeiro) para inverted={true}
-          const sortedMessages = allMessages.sort((a, b) => b.timestamp - a.timestamp);
+          // 5. Ordenar por timestamp crescente (antigas primeiro, novas por último) - padrão WhatsApp
+          const sortedMessages = allMessages.sort((a, b) => a.timestamp - b.timestamp);
           
           return sortedMessages;
         });
@@ -310,7 +308,8 @@ export default function ClanChatScreen() {
           
           // 4. Combinar e ordenar
           const allMessages = [...mergedReals, ...stillPending];
-          const sortedMessages = allMessages.sort((a, b) => b.timestamp - a.timestamp);
+          // Ordenar por timestamp crescente (antigas primeiro, novas por último) - padrão WhatsApp
+          const sortedMessages = allMessages.sort((a, b) => a.timestamp - b.timestamp);
           
           return sortedMessages;
         });
@@ -481,8 +480,8 @@ export default function ClanChatScreen() {
       deleted: false,
     };
     
-    // 2. Adicionar mensagem otimista ao estado IMEDIATAMENTE
-    setMessages(prevMessages => [optimisticMessage, ...prevMessages]);
+    // 2. Adicionar mensagem otimista ao estado IMEDIATAMENTE (no final, pois lista não está mais invertida)
+    setMessages(prevMessages => [...prevMessages, optimisticMessage]);
     
     // 3. Limpar input imediatamente
     setMessageText('');
@@ -732,7 +731,8 @@ export default function ClanChatScreen() {
 
     if (item.type === 'message') {
       const isMyMessage = item.authorTotem === currentTotemId;
-      const prevItem = groupedMessages[index + 1];
+      // Com lista não invertida, mensagem anterior está em index - 1
+      const prevItem = index > 0 ? groupedMessages[index - 1] : null;
       const showAuthor = shouldShowAuthor(item, prevItem);
 
       // Normalizar authorName para evitar problemas com null/undefined
@@ -772,7 +772,7 @@ export default function ClanChatScreen() {
       const keyboardDidShowListener = Keyboard.addListener(
         'keyboardDidShow',
         () => {
-          // Pequeno delay para Android
+          // Pequeno delay para Android - scroll para final da lista
           setTimeout(() => {
             scrollToNewMessage();
           }, 100);
@@ -826,12 +826,11 @@ export default function ClanChatScreen() {
               ref={flatListRef}
               data={groupedMessages}
               keyExtractor={(item) => item.id?.toString() || `item-${item.timestamp}`}
-              inverted={true}
               renderItem={renderItem}
               contentContainerStyle={styles.messagesListContent}
               showsVerticalScrollIndicator={false}
               onContentSizeChange={() => {
-                // Scroll automático para nova mensagem (lista invertida)
+                // Scroll automático para nova mensagem (final da lista)
                 scrollToNewMessage();
               }}
             />
