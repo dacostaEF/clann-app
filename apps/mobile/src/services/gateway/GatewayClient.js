@@ -66,9 +66,10 @@ export class GatewayClient {
    * 
    * @param {string} totemId - ID do Totem
    * @param {string} publicKey - Chave pública do Totem
+   * @param {string} clannId - ID do CLANN (opcional, para conexão específica)
    * @returns {Promise<void>}
    */
-  async connect(totemId, publicKey) {
+  async connect(totemId, publicKey, clannId = null) {
     // Validações básicas
     if (!totemId || !publicKey) {
       throw new Error('totemId e publicKey são obrigatórios');
@@ -76,13 +77,21 @@ export class GatewayClient {
 
     this.totemId = totemId;
     this.publicKey = publicKey;
+    this.currentClannId = clannId;
 
     return new Promise((resolve, reject) => {
-      console.log(`🔗 Conectando ao Gateway: ${this.config.gatewayUrl}`);
+      // Construir URL com clannId e deviceId na query string (se fornecido)
+      let wsUrl = this.config.gatewayUrl;
+      if (clannId) {
+        const separator = wsUrl.includes('?') ? '&' : '?';
+        wsUrl = `${wsUrl}${separator}clannId=${encodeURIComponent(clannId)}&deviceId=${encodeURIComponent(totemId)}`;
+      }
+
+      console.log(`🔗 Conectando ao Gateway: ${wsUrl}`);
 
       // React Native: WebSocket é global, não precisa importar
-      console.log('[GatewayClient] gatewayUrl =', this.config.gatewayUrl);
-      this.ws = new WebSocket(this.config.gatewayUrl);
+      console.log('[GatewayClient] gatewayUrl =', wsUrl);
+      this.ws = new WebSocket(wsUrl);
 
       // ==================== EVENT HANDLERS ====================
 

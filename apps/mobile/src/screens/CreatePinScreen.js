@@ -22,6 +22,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { createPin } from '../security/PinManager';
 import { isBiometryAvailable } from '../security/BiometryManager';
 import { useTotem } from '../context/TotemContext';
+import ClanStorage from '../clans/ClanStorage';
+import { getCurrentTotemId } from '../crypto/totemStorage';
 
 export default function CreatePinScreen({ navigation }) {
   const { loadTotem } = useTotem();
@@ -156,6 +158,39 @@ export default function CreatePinScreen({ navigation }) {
     }
   };
 
+  /**
+   * Navega após criar PIN: verifica se há CLANNs e navega para ClanDetail se existir
+   */
+  const navigateAfterPinCreation = async () => {
+    try {
+      const totemId = await getCurrentTotemId();
+      if (!totemId) {
+        // Se não conseguir obter totemId, vai para Home
+        navigation.navigate('Home');
+        return;
+      }
+
+      // Buscar CLANNs associados ao Totem
+      const clans = await ClanStorage.getUserClans(totemId);
+      
+      if (clans && clans.length > 0) {
+        // Se houver CLANNs, navegar para o primeiro
+        const firstClan = clans[0];
+        navigation.navigate('ClanDetail', {
+          clanId: firstClan.id,
+          clan: firstClan
+        });
+      } else {
+        // Se não houver CLANNs, navegar para Home
+        navigation.navigate('Home');
+      }
+    } catch (error) {
+      console.warn('[CreatePin] Erro ao verificar CLANNs, navegando para Home:', error);
+      // Em caso de erro, navegar para Home (comportamento seguro)
+      navigation.navigate('Home');
+    }
+  };
+
   const handleCreatePin = async (finalPin) => {
     if (finalPin.length < 4) {
       setIsProcessing(false);
@@ -180,7 +215,7 @@ export default function CreatePinScreen({ navigation }) {
             {
               text: 'Não',
               style: 'cancel',
-              onPress: () => navigation.navigate('Home'),
+              onPress: () => navigateAfterPinCreation(),
             },
             {
               text: 'Sim',
@@ -188,17 +223,17 @@ export default function CreatePinScreen({ navigation }) {
                 const { enableBiometry } = await import('../security/BiometryManager');
                 try {
                   await enableBiometry();
-                  navigation.navigate('Home');
+                  await navigateAfterPinCreation();
                 } catch (error) {
                   Alert.alert('Erro', 'Não foi possível ativar biometria');
-                  navigation.navigate('Home');
+                  await navigateAfterPinCreation();
                 }
               },
             },
           ]
         );
       } else {
-        navigation.navigate('Home');
+        await navigateAfterPinCreation();
       }
     } catch (error) {
       setIsProcessing(false);

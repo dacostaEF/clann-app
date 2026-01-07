@@ -15,13 +15,18 @@ import { chatTheme } from '../../styles/chatTheme';
  * Cabeçalho premium do chat
  * Design inspirado em WhatsApp/Telegram
  */
-export default function ChatHeader({ clan, onBack, memberCount = 0 }) {
+export default function ChatHeader({ clan, onBack, memberCount = 0, onInviteMembers }) {
   const [menuVisible, setMenuVisible] = useState(false);
 
   const handleMenuAction = (action) => {
     setMenuVisible(false);
     
     switch (action) {
+      case 'invite':
+        if (onInviteMembers) {
+          onInviteMembers();
+        }
+        break;
       case 'members':
         Alert.alert('Membros', 'Funcionalidade em desenvolvimento');
         break;
@@ -107,6 +112,14 @@ export default function ChatHeader({ clan, onBack, memberCount = 0 }) {
           onPress={() => setMenuVisible(false)}
         >
           <View style={styles.menuContainer}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleMenuAction('invite')}
+            >
+              <Ionicons name="person-add" size={20} color={chatTheme.textPrimary} />
+              <Text style={styles.menuItemText}>Convidar Membros</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => handleMenuAction('members')}

@@ -14,9 +14,9 @@ import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/nativ
 import { LinearGradient } from 'expo-linear-gradient';
 import ClanStorage from '../clans/ClanStorage';
 import MessagesManager from '../messages/MessagesManager';
-import { loadClanMessages, saveClanMessage } from '../messages/MessagesStorage';
 import { getCurrentTotemId } from '../crypto/totemStorage';
 import ChatHeader from '../components/chat/ChatHeader';
+import InviteModal from '../components/chat/InviteModal';
 import MessageBubble from '../components/chat/MessageBubble';
 import MessageInput from '../components/chat/MessageInput';
 import DateSeparator from '../components/chat/DateSeparator';
@@ -56,6 +56,7 @@ export default function ClanChatScreen() {
   const [reactionPickerPosition, setReactionPickerPosition] = useState({ x: 0, y: 0 });
   const [actionsModalVisible, setActionsModalVisible] = useState(false);
   const [selectedMessageForAction, setSelectedMessageForAction] = useState(null);
+  const [inviteModalVisible, setInviteModalVisible] = useState(false);
   
   const flatListRef = useRef(null);
 
@@ -121,48 +122,8 @@ export default function ClanChatScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clanId, clanFromParams?.id]);
 
-  // PASSO 4 — Carregar histórico de mensagens ao entrar no chat
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      try {
-        if (!clanId) return;
-
-        console.log('[CHAT] carregando histórico do clan', clanId);
-
-        const history = await loadClanMessages(clanId, 200);
-        if (!alive) return;
-
-        // Adaptar para o formato que o UI usa
-        const mapped = history.map(r => ({
-          id: String(r.id),
-          text: r.message || '',
-          message: r.message || '',
-          createdAt: r.timestamp ? new Date(r.timestamp) : new Date(),
-          timestamp: r.timestamp || Date.now(),
-          authorTotem: r.author_totem || null,
-          senderTotem: r.author_totem || null,
-        }));
-
-        // Se já tiver mensagens carregadas, mesclar (evitar duplicatas)
-        // Ordenar em ordem crescente (antigas primeiro, novas por último) - padrão WhatsApp
-        setMessages(prevMessages => {
-          const existingIds = new Set(prevMessages.map(m => m.id));
-          const newMessages = mapped.filter(m => !existingIds.has(m.id));
-          return [...prevMessages, ...newMessages].sort((a, b) => 
-            (a.timestamp || 0) - (b.timestamp || 0)
-          );
-        });
-
-        console.log(`[CHAT] histórico carregado: ${mapped.length} msgs`);
-      } catch (err) {
-        console.warn('[SOFT-FAIL][ClanChat] load history:', err?.message || err);
-      }
-    })();
-
-    return () => { alive = false; };
-  }, [clanId]);
+  // Carregamento de mensagens é feito exclusivamente via MessagesManager.getMessages()
+  // (fonte única de leitura) no useEffect abaixo (linha 168)
 
   // Carregar mensagens quando o CLANN estiver disponível
   useEffect(() => {
@@ -380,16 +341,20 @@ export default function ClanChatScreen() {
     console.log(`📡 Configurando listeners para CLANN ${clan.id}`);
 
     // 1. Registrar handler no Gateway (se disponível) - opcional
-    try {
-      if (MessagesManager.isGatewayAvailable && typeof MessagesManager.isGatewayAvailable === 'function') {
-        if (MessagesManager.isGatewayAvailable()) {
-          MessagesManager.registerClannGatewayHandler(clan.id);
+    (async () => {
+      try {
+        if (MessagesManager.isGatewayAvailable && typeof MessagesManager.isGatewayAvailable === 'function') {
+          // registerClannGatewayHandler agora é async e garante conexão com clannId
+          await MessagesManager.registerClannGatewayHandler(clan.id);
+        } else {
+          // Se Gateway não está disponível, tentar inicializar com clannId
+          await MessagesManager.registerClannGatewayHandler(clan.id);
         }
+      } catch (gatewayError) {
+        // ✅ SOFT-FAIL: Gateway não disponível, continua sem ele
+        console.warn('[ClanChat] Gateway não disponível, continuando sem ele:', gatewayError.message);
       }
-    } catch (gatewayError) {
-      // ✅ SOFT-FAIL: Gateway não disponível, continua sem ele
-      console.warn('[ClanChat] Gateway não disponível, continuando sem ele:', gatewayError.message);
-    }
+    })();
 
     // 2. Registrar callback para atualizar UI quando mensagem chegar - opcional
     let unregister = null;
@@ -507,21 +472,8 @@ export default function ClanChatScreen() {
         }
       );
       
-      // PASSO 4 — Salvar mensagem no histórico (soft-fail)
-      try {
-        await saveClanMessage({
-          clanId: clan.id,
-          messageId: addedMessage?.id || tempId,
-          senderTotem: currentTotemId,
-          content: textToSend,
-          createdAt: new Date().toISOString(),
-        });
-      } catch (saveErr) {
-        // Soft-fail: não bloqueia o envio
-        console.warn('[SOFT-FAIL][ClanChat] Erro ao salvar no histórico:', saveErr?.message || saveErr);
-      }
-      
       // 6. Recarregar mensagens do storage para substituir a otimista pela real
+      // MessagesManager.addMessage() já persiste corretamente (fonte única de persistência)
       await loadMessages();
       
       // 7. Atualizar timestamp do sync após enviar mensagem
@@ -828,6 +780,7 @@ export default function ClanChatScreen() {
             clan={clan}
             onBack={() => navigation.goBack()}
             memberCount={memberCount}
+            onInviteMembers={() => setInviteModalVisible(true)}
           />
 
           {/* Área de mensagens */}
@@ -891,6 +844,13 @@ export default function ClanChatScreen() {
           messageText={selectedMessageForAction?.message || ''}
           canEdit={selectedMessageForAction?.canEdit || false}
           canDelete={selectedMessageForAction?.canDelete || false}
+        />
+
+        {/* Modal de Convite */}
+        <InviteModal
+          visible={inviteModalVisible}
+          clan={clan}
+          onClose={() => setInviteModalVisible(false)}
         />
         </SafeAreaView>
       </KeyboardAvoidingView>

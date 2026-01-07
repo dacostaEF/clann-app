@@ -62,8 +62,9 @@ class MessagesManager {
 
   /**
    * Inicializar conexão com o Gateway após criação do Totem
+   * @param {string|number} clannId - ID do CLANN (opcional, para conexão específica)
    */
-  async initializeGateway() {
+  async initializeGateway(clannId = null) {
     try {
       console.log('🚀 Inicializando Gateway CLANN...');
 
@@ -78,8 +79,8 @@ class MessagesManager {
         gatewayUrl: process.env.EXPO_PUBLIC_GATEWAY_URL || 'ws://localhost:8080',
       });
 
-      // 3. Conectar com credenciais do Totem
-      await this.gatewayClient.connect(totemData.totemId, totemData.publicKey);
+      // 3. Conectar com credenciais do Totem e clannId (se fornecido)
+      await this.gatewayClient.connect(totemData.totemId, totemData.publicKey, clannId);
 
       console.log('✅ Gateway conectado e autenticado');
 
@@ -220,19 +221,25 @@ class MessagesManager {
   /**
    * Registrar handler para mensagens de um Clann específico
    * ✅ Evita múltiplos registros para o mesmo clannId
+   * ✅ Garante que Gateway está conectado com clannId correto
    */
-  registerClannGatewayHandler(clanId) {
-    if (!this.isGatewayAvailable()) {
-      console.warn('⚠️ Gateway não disponível, não é possível registrar handler');
-      return null;
-    }
-
+  async registerClannGatewayHandler(clanId) {
     const normalizedClanId = clanId.toString();
 
     // ✅ Verificar se já está registrado (evita duplicatas)
     if (this.registeredGatewayHandlers.has(normalizedClanId)) {
       console.log(`📡 Handler já registrado para CLANN ${normalizedClanId}`);
       return null;
+    }
+
+    // Se Gateway não está disponível, inicializar com clannId
+    if (!this.isGatewayAvailable()) {
+      try {
+        await this.initializeGateway(normalizedClanId);
+      } catch (error) {
+        console.warn('⚠️ Gateway não disponível, não é possível registrar handler:', error.message);
+        return null;
+      }
     }
 
     // Registrar handler no GatewayClient
