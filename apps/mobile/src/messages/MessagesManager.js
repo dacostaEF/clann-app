@@ -451,15 +451,38 @@ class MessagesManager {
       await this.init();
     }
 
+    // ✅ DOSE 1D: Garantir que o banco está pronto ANTES de chamar addMessage
+    console.log('[FLOW] MessagesManager.addMessage() iniciado');
+    if (this.storage && typeof this.storage.ensureDb === 'function') {
+      console.log('[FLOW] Aguardando ensureDb() antes do envio');
+      await this.storage.ensureDb();
+      console.log('[FLOW] Banco garantido, chamando addMessage');
+    } else {
+      console.warn('[FLOW] ensureDb() não disponível, continuando sem garantia de inicialização');
+    }
+
     // Criptografar mensagem antes de salvar (Sprint 6)
     try {
       // Comprimir texto antes de criptografar (Sprint 7 - ETAPA 6)
       const compressedText = compressText(trimmedText);
       const encryptedText = await encryptMessage(parseInt(clanId), compressedText);
       
-      // ✅ NOVO: Tentar enviar via Gateway se disponível
+      // PASSO 3: Persistir imediatamente com status='sending' (antes de tentar Gateway)
+      const message = await this.storage.addMessage(
+        parseInt(clanId),
+        authorTotem.trim(),
+        encryptedText,
+        { 
+          selfDestructAt, 
+          burnAfterRead,
+          status: 'sending' // PASSO 3: Status inicial sempre 'sending'
+        }
+      );
+      
+      // ✅ NOVO: Tentar enviar via Gateway se disponível (após persistir)
       let messageId = null;
       let sentViaGateway = false;
+      let finalStatus = 'sending'; // Inicialmente 'sending'
       
       if (this.isGatewayAvailable()) {
         try {
@@ -488,28 +511,31 @@ class MessagesManager {
               const messageIds = await Promise.all(sendPromises);
               messageId = messageIds.find(id => id !== null) || this.generateMessageId();
               sentViaGateway = true;
+              finalStatus = 'sent'; // PASSO 3: Atualizar para 'sent' se enviado
               console.log(`📤 Mensagem enviada via Gateway para ${otherMembers.length} membros`);
+            } else {
+              finalStatus = 'pending_sync'; // PASSO 3: Sem membros, aguardar sync
             }
+          } else {
+            finalStatus = 'pending_sync'; // PASSO 3: CLANN não encontrado, aguardar sync
           }
         } catch (error) {
-          console.warn('⚠️ Erro ao enviar via Gateway, salvando localmente:', error);
-          // Fallback: salvar localmente
+          console.warn('⚠️ Erro ao enviar via Gateway, mantendo status pending_sync:', error);
+          finalStatus = 'pending_sync'; // PASSO 3: Erro, aguardar retry
         }
+      } else {
+        finalStatus = 'pending_sync'; // PASSO 3: Gateway não disponível, aguardar sync
       }
       
-      // Salvar mensagem localmente (sempre, para histórico)
-      const message = await this.storage.addMessage(
-        parseInt(clanId),
-        authorTotem.trim(),
-        encryptedText,
-        { 
-          selfDestructAt, 
-          burnAfterRead,
-          messageId: messageId || undefined, // Usar ID do Gateway se disponível
-          viaGateway: sentViaGateway,
-          status: sentViaGateway ? 'sent' : 'pending_sync' // Status para sincronização
-        }
-      );
+      // PASSO 3: Atualizar status após tentativa de envio
+      // CORREÇÃO: Não aguardar resultado - status é metadata, não crítico
+      // Se falhar, não deve quebrar o fluxo de envio
+      if (finalStatus !== 'sending') {
+        this.updateMessageStatus(message.id, finalStatus).catch(err => {
+          // Logar mas não propagar erro - envio local não pode falhar por erro de status
+          console.warn('[MessagesManager] Falha ao atualizar status (não crítico):', err?.message || err);
+        });
+      }
       
       // Atualizar cache de última mensagem (Sprint 7 - ETAPA 6)
       try {
@@ -601,7 +627,8 @@ class MessagesManager {
               readBy: deliveryStatus.read_by || [],
               edited: msg.edited === 1 || msg.edited === true,
               deleted: isDeleted,
-              editedAt: msg.edited_at || null
+              editedAt: msg.edited_at || null,
+              status: msg.status || 'sent' // PASSO 4: Retornar status (default 'sent' para compatibilidade)
             };
           } catch (error) {
             // Se falhar ao descriptografar, retorna mensagem de erro
@@ -612,7 +639,8 @@ class MessagesManager {
               authorTotem: msg.author_totem,
               message: '[Mensagem criptografada - não foi possível descriptografar]',
               timestamp: msg.timestamp,
-              error: true
+              error: true,
+              status: msg.status || 'sent' // PASSO 4: Retornar status mesmo em caso de erro
             };
           }
         })
@@ -747,6 +775,39 @@ class MessagesManager {
     } catch (error) {
       console.error('Erro ao marcar mensagem como lida:', error);
       throw new Error(`Erro ao marcar mensagem como lida: ${error.message}`);
+    }
+  }
+
+  // ---------------------------------------------------------
+  // Atualizar status de uma mensagem (PASSO 3/5: Status de envio)
+  // ---------------------------------------------------------
+  async updateMessageStatus(messageId, newStatus) {
+    if (!messageId || !newStatus) {
+      // CORREÇÃO: Não lançar erro, apenas logar e retornar (não quebrar fluxo)
+      console.warn('[MessagesManager] updateMessageStatus chamado com parâmetros inválidos:', { messageId, newStatus });
+      return false;
+    }
+
+    // Validar status válido
+    const validStatuses = ['sending', 'sent', 'pending_sync'];
+    if (!validStatuses.includes(newStatus)) {
+      console.warn(`Status inválido: ${newStatus}, usando 'sent' como fallback`);
+      newStatus = 'sent';
+    }
+
+    try {
+      const updated = await this.storage.updateMessageStatus(messageId, newStatus);
+      // CORREÇÃO: storage.updateMessageStatus() agora retorna false se não encontrou mensagem
+      // Não lançar erro - status é metadata, não crítico
+      if (!updated) {
+        console.warn(`[MessagesManager] Status da mensagem ${messageId} não foi atualizado (mensagem não encontrada ou erro não crítico)`);
+      }
+      return updated;
+    } catch (error) {
+      // CORREÇÃO: Não lançar erro - apenas logar warning e retornar false
+      // Envio local não pode falhar por erro de atualização de status
+      console.warn('[MessagesManager] Erro ao atualizar status da mensagem (não crítico):', error?.message || error);
+      return false; // Retorna false, mas não quebra fluxo
     }
   }
 

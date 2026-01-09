@@ -14,6 +14,9 @@ class SyncManager {
     this.debounceTimers = new Map(); // Map<clanId, timerId> - Sprint 7 - ETAPA 6
     this.pendingSyncs = new Map(); // Map<clanId, callback> - Sprint 7 - ETAPA 6
     this.DEBOUNCE_DELAY = 500; // 500ms de debounce
+    // ✅ DOSE FINAL: Backoff para evitar loop infinito
+    this.updatesFailures = new Map(); // Map<clanId, failureCount>
+    this.MAX_FAILURES = 3; // Parar após 3 falhas consecutivas
   }
 
   // ---------------------------------------------------------
@@ -87,10 +90,33 @@ class SyncManager {
   // ---------------------------------------------------------
   async fetchUpdates(clanId, lastTimestamp) {
     try {
+      // ✅ DOSE FINAL: Garantir que DB está inicializado antes de buscar
+      // MessagesStorage é uma instância, então chamamos ensureDb() diretamente
+      if (MessagesStorage && typeof MessagesStorage.ensureDb === 'function') {
+        await MessagesStorage.ensureDb();
+      }
+      
       const updates = await MessagesStorage.getMessagesSince(clanId, lastTimestamp);
+      
+      // ✅ DOSE FINAL: Resetar contador de falhas em caso de sucesso
+      this.updatesFailures.set(clanId, 0);
+      
       return updates || [];
     } catch (error) {
+      // ✅ DOSE FINAL: Incrementar contador de falhas
+      const currentFailures = this.updatesFailures.get(clanId) || 0;
+      const newFailures = currentFailures + 1;
+      this.updatesFailures.set(clanId, newFailures);
+      
       console.error('Erro ao buscar atualizações:', error);
+      
+      // ✅ DOSE FINAL: Parar loop após MAX_FAILURES falhas consecutivas
+      if (newFailures >= this.MAX_FAILURES) {
+        console.error(`[UPDATES] Parando loop para CLANN ${clanId} após ${this.MAX_FAILURES} falhas para evitar crash/loop infinito.`);
+        this.stopSync(clanId);
+        return [];
+      }
+      
       return [];
     }
   }

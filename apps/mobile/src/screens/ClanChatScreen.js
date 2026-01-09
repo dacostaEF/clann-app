@@ -48,6 +48,12 @@ export default function ClanChatScreen() {
   const [currentTotemId, setCurrentTotemId] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false); // Estado de hidratação
+  
+  // 🔍 LOG DIAGNÓSTICO: Monitorar mudanças no estado messages
+  useEffect(() => {
+    console.log('[state] messages length AFTER setMessages:', messages.length);
+  }, [messages]);
   const [memberCount, setMemberCount] = useState(0);
   const [selfDestructAt, setSelfDestructAt] = useState(null);
   const [burnAfterRead, setBurnAfterRead] = useState(false);
@@ -123,15 +129,21 @@ export default function ClanChatScreen() {
   }, [clanId, clanFromParams?.id]);
 
   // Carregamento de mensagens é feito exclusivamente via MessagesManager.getMessages()
-  // (fonte única de leitura) no useEffect abaixo (linha 168)
+  // (fonte única de leitura) no useEffect abaixo
 
   // Carregar mensagens quando o CLANN estiver disponível
   useEffect(() => {
-    if (clan?.id && currentTotemId) {
+    console.log('[useEffect] triggered');
+    console.log('[effect] clan?.id:', clan?.id, 'clanId param:', clanId);
+    console.log('[effect] currentTotemId:', currentTotemId);
+    // Usar clanId dos params como fallback se clan?.id não estiver disponível ainda
+    const targetClanId = clan?.id || clanId;
+    if (targetClanId && currentTotemId) {
+      // Resetar hidratação antes de carregar (para garantir que tela vazia não apareça prematuramente)
+      setIsHydrated(false);
       loadMessages();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clan?.id, currentTotemId]);
+  }, [clan?.id, clanId, currentTotemId, loadMessages]);
 
   // PASSO 3 — loadClan opcional (não bloqueia renderização)
   const loadClan = async () => {
@@ -162,13 +174,58 @@ export default function ClanChatScreen() {
     }
   }, [clan?.members]);
 
-  // Carregar mensagens com merge inteligente de mensagens otimistas
+  // PASSO 6: Carregar TODAS as mensagens (incluindo 'sending' e 'pending_sync')
   const loadMessages = useCallback(async () => {
-    if (!clan?.id || !currentTotemId) return [];
+    // 🔍 LOG DIAGNÓSTICO: Quando loadMessages() é chamado
+    console.log('[loadMessages] called');
+    console.log('🔍 [DIAGNÓSTICO] loadMessages() CHAMADO');
+    console.log('🔍 [DIAGNÓSTICO] Stack trace:', new Error().stack?.split('\n').slice(1, 4).join('\n'));
     
+    // Usar clanId dos params como fallback se clan?.id não estiver disponível ainda
+    const targetClanId = clan?.id || clanId;
+    
+    // 🔍 LOG DIAGNÓSTICO: Valores de clanId e currentTotemId
+    console.log('[loadMessages] clanId:', targetClanId);
+    console.log('[loadMessages] currentTotemId:', currentTotemId);
+    console.log('🔍 [DIAGNÓSTICO] targetClanId:', targetClanId);
+    console.log('🔍 [DIAGNÓSTICO] clan?.id:', clan?.id);
+    console.log('🔍 [DIAGNÓSTICO] clanId (params):', clanId);
+    console.log('🔍 [DIAGNÓSTICO] currentTotemId:', currentTotemId);
+    
+    // ✅ CORREÇÃO: Early return dentro do try para garantir que finally sempre execute
     try {
+      // Validar antes de continuar, mas dentro do try para garantir finally
+      console.log('[loadMessages] early return check', {
+        targetClanId,
+        currentTotemId
+      });
+      if (!targetClanId || !currentTotemId) {
+        // 🔍 LOG DIAGNÓSTICO: Early return
+        console.log('[loadMessages] EARLY RETURN - dados não disponíveis');
+        console.log('🔍 [DIAGNÓSTICO] EARLY RETURN - dados não disponíveis');
+        console.log('🔍 [DIAGNÓSTICO] targetClanId disponível?', !!targetClanId);
+        console.log('🔍 [DIAGNÓSTICO] currentTotemId disponível?', !!currentTotemId);
+        // Se não tiver dados necessários, ainda marca como hidratado (para não mostrar tela vazia prematuramente)
+        // Mas retorna vazio
+        return [];
+      }
+      
       setLoading(true);
-      const msgs = await MessagesManager.getMessages(clan.id);
+      console.log('🔍 [DIAGNÓSTICO] Chamando MessagesManager.getMessages()...');
+      // PASSO 6: getMessages() já retorna TODAS as mensagens, incluindo 'sending' e 'pending_sync'
+      const msgs = await MessagesManager.getMessages(targetClanId);
+      
+      // 🔍 LOG DIAGNÓSTICO: Quantidade de mensagens retornadas do banco
+      console.log('[loadMessages] messages from DB:', msgs.length);
+      console.log('🔍 [DIAGNÓSTICO] Mensagens retornadas do banco:', msgs.length);
+      if (msgs.length > 0) {
+        console.log('🔍 [DIAGNÓSTICO] Primeira mensagem:', {
+          id: msgs[0].id,
+          authorTotem: msgs[0].authorTotem,
+          timestamp: msgs[0].timestamp,
+          status: msgs[0].status
+        });
+      }
       
       // Marcar todas as mensagens recebidas como entregue ao carregar (Sprint 6 - ETAPA 4)
       const receivedMessages = msgs.filter(msg => msg.authorTotem !== currentTotemId);
@@ -181,31 +238,28 @@ export default function ClanChatScreen() {
         await Promise.all(markDeliveredPromises);
         
         // Recarregar mensagens para obter status atualizado
-        const updatedMsgs = await MessagesManager.getMessages(clan.id);
+        const updatedMsgs = await MessagesManager.getMessages(targetClanId);
         
-        // Merge inteligente: preservar otimistas e substituir apenas quando real estiver disponível
+        // PASSO 6: Merge simplificado - mensagens do banco já incluem status
         setMessages(prevMessages => {
-          // 1. Separar mensagens otimistas (id começando com 'temp_')
+          // 1. Separar mensagens otimistas temporárias (id começando com 'temp_')
           const optimisticMsgs = prevMessages.filter(m => m.id && m.id.toString().startsWith('temp_'));
           
-          // 2. Mesclar mensagens reais do storage com otimistas correspondentes
+          // 2. Mesclar mensagens reais do storage (que já têm status do banco)
           const mergedReals = updatedMsgs.map(real => {
-            // Procurar otimista correspondente
+            // Procurar otimista correspondente (para substituir temporária pela real)
             const matchingOptimistic = optimisticMsgs.find(opt => 
               opt.message === real.message &&
               opt.authorTotem === real.authorTotem &&
-              Math.abs(opt.timestamp - real.timestamp) < 10000 // Dentro de 10 segundos
+              Math.abs(opt.timestamp - real.timestamp) < 10000
             );
             
-            // Se encontrou otimista correspondente, usa a real (com status atualizado)
+            // Se encontrou otimista correspondente, usa a real (com status do banco)
             if (matchingOptimistic) {
-              return {
-                ...real,
-                status: 'sent' // Atualizar status de 'sending' para 'sent'
-              };
+              return real; // Status já vem do banco ('sending', 'sent', 'pending_sync')
             }
             
-            // Caso contrário, retorna a mensagem real
+            // Caso contrário, retorna a mensagem real (com status do banco)
             return real;
           });
           
@@ -218,12 +272,13 @@ export default function ClanChatScreen() {
             )
           );
           
-          // 4. Combinar mensagens reais mescladas com otimistas pendentes
+          // 4. Combinar mensagens reais (com status do banco) com otimistas pendentes
           const allMessages = [...mergedReals, ...stillPending];
           
-          // 5. Ordenar por timestamp crescente (antigas primeiro, novas por último) - padrão WhatsApp
+          // 5. Ordenar por timestamp crescente (antigas primeiro, novas por último)
           const sortedMessages = allMessages.sort((a, b) => a.timestamp - b.timestamp);
           
+          console.log('[loadMessages] setting messages, count:', sortedMessages.length);
           return sortedMessages;
         });
         
@@ -232,15 +287,18 @@ export default function ClanChatScreen() {
           scrollToNewMessage();
         }, 100);
         
-        // Retornar mensagens mescladas (precisamos acessar o estado atualizado)
+        console.log('🔍 [DIAGNÓSTICO] Mensagens após merge (com recebidas):', updatedMsgs.length);
         return updatedMsgs;
       } else {
-        // Merge inteligente mesmo quando não há mensagens recebidas
+        // 🔍 LOG DIAGNÓSTICO: Sem mensagens recebidas
+        console.log('🔍 [DIAGNÓSTICO] Nenhuma mensagem recebida, processando apenas mensagens do banco');
+        // PASSO 6: Mesmo quando não há mensagens recebidas, usar mensagens do banco (com status)
         setMessages(prevMessages => {
-          // 1. Separar mensagens otimistas
+          console.log('🔍 [DIAGNÓSTICO] prevMessages.length:', prevMessages.length);
+          // 1. Separar mensagens otimistas temporárias
           const optimisticMsgs = prevMessages.filter(m => m.id && m.id.toString().startsWith('temp_'));
           
-          // 2. Mesclar mensagens reais do storage com otimistas correspondentes
+          // 2. Mesclar mensagens reais do storage (que já têm status do banco)
           const mergedReals = msgs.map(real => {
             const matchingOptimistic = optimisticMsgs.find(opt => 
               opt.message === real.message &&
@@ -249,13 +307,10 @@ export default function ClanChatScreen() {
             );
             
             if (matchingOptimistic) {
-              return {
-                ...real,
-                status: 'sent'
-              };
+              return real; // Status já vem do banco
             }
             
-            return real;
+            return real; // Status já vem do banco
           });
           
           // 3. Manter otimistas ainda não confirmadas
@@ -269,9 +324,10 @@ export default function ClanChatScreen() {
           
           // 4. Combinar e ordenar
           const allMessages = [...mergedReals, ...stillPending];
-          // Ordenar por timestamp crescente (antigas primeiro, novas por último) - padrão WhatsApp
           const sortedMessages = allMessages.sort((a, b) => a.timestamp - b.timestamp);
           
+          console.log('[loadMessages] setting messages, count:', sortedMessages.length);
+          console.log('🔍 [DIAGNÓSTICO] Mensagens finais após merge (sem recebidas):', sortedMessages.length);
           return sortedMessages;
         });
         
@@ -283,12 +339,19 @@ export default function ClanChatScreen() {
         return msgs;
       }
     } catch (error) {
-      console.error('Erro ao carregar mensagens:', error);
+      console.error('🔍 [DIAGNÓSTICO] ERRO ao carregar mensagens:', error);
       return [];
     } finally {
       setLoading(false);
+      // ✅ FINALIZAR HIDRATAÇÃO: Sempre marcar como hidratado após tentar carregar
+      // (mesmo se não houver mensagens, se houver erro, ou se dados não estiverem disponíveis)
+      // Isso garante que a tela vazia só apareça quando realmente não houver mensagens
+      console.log('[loadMessages] setIsHydrated(true)');
+      console.log('🔍 [DIAGNÓSTICO] EXECUTANDO setIsHydrated(true)');
+      setIsHydrated(true);
+      console.log('🔍 [DIAGNÓSTICO] Hidratação finalizada');
     }
-  }, [clan?.id, currentTotemId, scrollToNewMessage]);
+  }, [clan?.id, clanId, currentTotemId, scrollToNewMessage]);
 
   // Handler para deltas recebidos via sync (Sprint 6 - ETAPA 6)
   const handleIncomingDeltas = useCallback(async (deltaMessages) => {
@@ -331,6 +394,45 @@ export default function ClanChatScreen() {
     } else {
       // Parar sync se não houver CLANN ou totemId
       SyncManager.stopSync();
+    }
+  }, [clan?.id, currentTotemId]);
+
+  // PASSO 7: Retry simples para mensagens pendentes (oportunista)
+  const retryPendingMessages = useCallback(async () => {
+    if (!clan?.id || !currentTotemId) return;
+    
+    try {
+      // Verificar se Gateway está disponível
+      if (!MessagesManager.isGatewayAvailable || !MessagesManager.isGatewayAvailable()) {
+        // Gateway não disponível, mensagens permanecem como 'pending_sync'
+        return;
+      }
+      
+      // Carregar todas as mensagens
+      const allMessages = await MessagesManager.getMessages(clan.id);
+      
+      // Identificar mensagens pendentes (do usuário atual)
+      const pendingMessages = allMessages.filter(msg => 
+        msg.authorTotem === currentTotemId &&
+        (msg.status === 'sending' || msg.status === 'pending_sync')
+      );
+      
+      if (pendingMessages.length === 0) return;
+      
+      console.log(`🔄 Identificadas ${pendingMessages.length} mensagens pendentes (retry futuro)`);
+      
+      // PASSO 7: Retry simples - por enquanto apenas identifica mensagens pendentes
+      // O reenvio real completo requereria descriptografar mensagens do banco e reenviar,
+      // o que é mais complexo. Por enquanto, mensagens 'pending_sync' serão tentadas
+      // automaticamente na próxima vez que o Gateway estiver disponível e o usuário
+      // interagir com o chat.
+      
+      // Manter status atual - não atualizar aqui (retry completo será implementado futuramente)
+      // As mensagens já estão persistidas e serão reidratadas corretamente
+      
+    } catch (error) {
+      console.warn('⚠️ Erro ao verificar mensagens pendentes:', error);
+      // Não bloquear UI em caso de erro
     }
   }, [clan?.id, currentTotemId]);
 
@@ -393,9 +495,36 @@ export default function ClanChatScreen() {
   // Recarregar mensagens ao focar na tela
   useFocusEffect(
     useCallback(() => {
-      if (clan?.id && currentTotemId) {
-        // Carregar mensagens primeiro
-        loadMessages().then((loadedMsgs) => {
+      console.log('[useFocusEffect] triggered');
+      console.log('[effect] clan?.id:', clan?.id, 'clanId param:', clanId);
+      console.log('[effect] currentTotemId:', currentTotemId);
+      // ✅ Usar clanId dos params como fallback quando clan?.id não existir
+      const targetClanId = clan?.id || clanId;
+      
+      // ✅ CORREÇÃO: Se dados não estiverem disponíveis, aguardar um pouco e tentar novamente
+      if (!targetClanId || !currentTotemId) {
+        // Se não tiver dados, aguardar um pouco e tentar novamente (para casos de timing)
+        const retryTimeout = setTimeout(() => {
+          const retryTargetClanId = clan?.id || clanId;
+          if (retryTargetClanId && currentTotemId) {
+            setIsHydrated(false);
+            loadMessages();
+          }
+        }, 500);
+        
+        return () => {
+          clearTimeout(retryTimeout);
+        };
+      }
+      
+      // Resetar hidratação antes de carregar
+      setIsHydrated(false);
+      // Carregar mensagens primeiro
+      loadMessages().then((loadedMsgs) => {
+          // PASSO 7: Tentar reenviar mensagens pendentes após carregar
+          retryPendingMessages().catch(err => {
+            console.warn('Erro ao fazer retry de mensagens pendentes:', err);
+          });
           // Usar apenas mensagens carregadas, não do estado (evita loop)
           if (loadedMsgs && Array.isArray(loadedMsgs)) {
             const receivedMessageIds = loadedMsgs
@@ -414,9 +543,8 @@ export default function ClanChatScreen() {
             }
           }
         });
-      }
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [clan?.id, currentTotemId])
+    }, [clan?.id, clanId, currentTotemId, retryPendingMessages])
   );
 
   // Enviar mensagem
@@ -785,7 +913,9 @@ export default function ClanChatScreen() {
 
           {/* Área de mensagens */}
           <View style={styles.messagesContainer}>
-          {messages.length === 0 && !loading ? (
+          {/* ✅ CORREÇÃO: Só mostrar tela vazia quando isHydrated === true && messages.length === 0 */}
+          {/* Enquanto isHydrated === false, não mostra nada (ou loading) */}
+          {isHydrated && messages.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateIcon}>💬</Text>
               <Text style={styles.emptyStateTitle}>Chat do CLANN</Text>

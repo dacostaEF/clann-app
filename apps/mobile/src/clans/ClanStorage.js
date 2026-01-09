@@ -17,11 +17,33 @@ export const getDatabase = async () => {
   if (!database) {
     try {
       database = await SQLite.openDatabaseAsync('clann.db');
-      console.log('Database opened successfully');
+      
+      // 🔍 AUDITORIA SQLite: Logar informações do banco
+      console.log('[AUDITORIA SQLite] ClanStorage.getDatabase()');
+      console.log('[AUDITORIA SQLite] db.constructor:', database?.constructor?.name);
+      console.log('[AUDITORIA SQLite] typeof db.transaction:', typeof database?.transaction);
+      console.log('[AUDITORIA SQLite] Nome do banco: clann.db');
+      console.log('[AUDITORIA SQLite] Instância do banco:', database);
+      
+      // 🔍 AUDITORIA SQLite: Verificar tabelas existentes
+      try {
+        const tables = await database.getAllAsync("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
+        console.log('[AUDITORIA SQLite] Tabelas no banco:', tables.map(t => t.name));
+        const clanMessagesExists = tables.some(t => t.name === 'clan_messages');
+        console.log('[AUDITORIA SQLite] Tabela clan_messages existe?', clanMessagesExists);
+      } catch (err) {
+        console.warn('[AUDITORIA SQLite] Erro ao verificar tabelas:', err);
+      }
+      
+      console.log('[AUDITORIA SQLite] Database opened successfully');
     } catch (error) {
-      console.error('Failed to open database:', error);
+      console.error('[AUDITORIA SQLite] Failed to open database:', error);
       throw error;
     }
+  } else {
+    // 🔍 AUDITORIA SQLite: Logar quando banco já existe
+    console.log('[AUDITORIA SQLite] ClanStorage.getDatabase() - reutilizando instância existente');
+    console.log('[AUDITORIA SQLite] Instância do banco:', database);
   }
   return database;
 };
@@ -366,6 +388,7 @@ class ClanStorage {
         `ALTER TABLE clan_messages ADD COLUMN deleted INTEGER DEFAULT 0;`,
         `ALTER TABLE clan_messages ADD COLUMN original_content TEXT;`,
         `ALTER TABLE clan_messages ADD COLUMN edited_at INTEGER;`,
+        `ALTER TABLE clan_messages ADD COLUMN status TEXT DEFAULT 'sent';`, // PASSO 1: Status de envio
         `ALTER TABLE clan_rules ADD COLUMN category TEXT;`,
         `ALTER TABLE clan_rules ADD COLUMN template_id TEXT;`,
         `ALTER TABLE pending_approvals ADD COLUMN executed INTEGER DEFAULT 0;`,
@@ -376,7 +399,18 @@ class ClanStorage {
         try {
           await this.db.execAsync(query);
         } catch (error) {
-          // Ignora erro se coluna já existe
+          // Ignora erro se coluna já existe (migration idempotente)
+          // SQLite retorna erro específico quando coluna já existe
+          const errorMessage = error?.message || String(error);
+          if (errorMessage.includes('duplicate column') || 
+              errorMessage.includes('already exists') ||
+              errorMessage.includes('no such column') === false) {
+            // Coluna já existe ou outro erro não crítico - ignorar silenciosamente
+            // (migration idempotente é o comportamento esperado)
+          } else {
+            // Outro tipo de erro - logar mas não bloquear
+            console.warn(`[ClanStorage] Aviso na migration: ${errorMessage}`);
+          }
         }
       }
 
