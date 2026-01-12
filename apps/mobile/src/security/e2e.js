@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { sha256 } from '@noble/hashes/sha256';
+import { hmac } from '@noble/hashes/hmac';
 import KeyManager from './keyManager';
 
 /**
@@ -101,24 +102,133 @@ function decryptAES(encryptedBase64, keyHex) {
 }
 
 // ---------------------------------------------------------
+// Envelope criptográfico CLANN1 com HMAC
+// ---------------------------------------------------------
+
+/**
+ * Deriva chave MAC a partir da chave principal
+ * @param {string} keyHex - Chave principal em hexadecimal
+ * @returns {Uint8Array} Chave MAC de 32 bytes
+ */
+function deriveMacKey(keyHex) {
+  const keyBuffer = Buffer.from(keyHex, 'hex');
+  // Deriva chave MAC: SHA256(key + "mac")
+  const macKeyInput = Buffer.concat([keyBuffer, Buffer.from('mac', 'utf8')]);
+  const macKey = sha256(macKeyInput);
+  return new Uint8Array(macKey);
+}
+
+/**
+ * Criptografa mensagem com envelope CLANN1
+ * Formato: CLANN1|v1|<nonceB64>|<ciphertextB64>|<macHex>
+ * @param {string} plaintext - Texto a criptografar
+ * @param {string} keyHex - Chave em hexadecimal
+ * @returns {string} Envelope criptografado
+ */
+function encryptEnvelope(plaintext, keyHex) {
+  try {
+    // 1. Criptografar mensagem usando AES
+    const ciphertextB64 = encryptAES(plaintext, keyHex);
+    
+    // 2. Gerar nonce aleatório (16 bytes)
+    const nonce = new Uint8Array(16);
+    if (Platform.OS === 'web' && typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(nonce);
+    } else {
+      for (let i = 0; i < 16; i++) {
+        nonce[i] = Math.floor(Math.random() * 256);
+      }
+    }
+    const nonceB64 = Buffer.from(nonce).toString('base64');
+    
+    // 3. Calcular HMAC sobre nonce|ciphertext
+    const macKey = deriveMacKey(keyHex);
+    const hmacInput = Buffer.from(`${nonceB64}|${ciphertextB64}`, 'utf8');
+    // HMAC-SHA256: SHA256(key || SHA256(key || message))
+    const hmacHash = hmac(sha256, macKey, hmacInput);
+    const macHex = Buffer.from(hmacHash).toString('hex');
+    
+    // 4. Montar envelope: CLANN1|v1|<nonceB64>|<ciphertextB64>|<macHex>
+    return `CLANN1|v1|${nonceB64}|${ciphertextB64}|${macHex}`;
+  } catch (error) {
+    console.error('Erro ao criar envelope:', error);
+    throw new Error('Falha ao criar envelope criptográfico');
+  }
+}
+
+/**
+ * Descriptografa mensagem com envelope CLANN1
+ * Valida HMAC antes de descriptografar
+ * @param {string} envelope - Envelope no formato CLANN1|v1|...
+ * @param {string} keyHex - Chave em hexadecimal
+ * @returns {{ok: boolean, text?: string}} Resultado da descriptografia
+ */
+function decryptEnvelope(envelope, keyHex) {
+  try {
+    // 1. Validar formato do envelope
+    if (!envelope || typeof envelope !== 'string') {
+      return { ok: false };
+    }
+    
+    // 2. Verificar se começa com CLANN1|
+    if (!envelope.startsWith('CLANN1|')) {
+      return { ok: false };
+    }
+    
+    // 3. Separar partes do envelope
+    const parts = envelope.split('|');
+    if (parts.length !== 5) {
+      return { ok: false };
+    }
+    
+    const [header, version, nonceB64, ciphertextB64, macHex] = parts;
+    
+    // 4. Validar header e versão
+    if (header !== 'CLANN1' || version !== 'v1') {
+      return { ok: false };
+    }
+    
+    // 5. Validar HMAC ANTES de descriptografar
+    const macKey = deriveMacKey(keyHex);
+    const hmacInput = Buffer.from(`${nonceB64}|${ciphertextB64}`, 'utf8');
+    const hmacHash = hmac(sha256, macKey, hmacInput);
+    const computedMac = Buffer.from(hmacHash).toString('hex');
+    
+    if (computedMac !== macHex) {
+      // HMAC inválido = chave errada ou dados corrompidos
+      return { ok: false };
+    }
+    
+    // 6. HMAC válido, agora descriptografar
+    const decrypted = decryptAES(ciphertextB64, keyHex);
+    
+    return { ok: true, text: decrypted };
+  } catch (error) {
+    // Qualquer erro = mensagem inválida
+    return { ok: false };
+  }
+}
+
+// ---------------------------------------------------------
 // Funções E2E principais
 // ---------------------------------------------------------
 
 /**
  * Criptografa uma mensagem para um CLANN
+ * Usa envelope CLANN1 com HMAC para validação
  * @param {number} clanId - ID do CLANN
  * @param {string} plaintext - Texto da mensagem
- * @returns {Promise<string>} Mensagem criptografada em base64
+ * @returns {Promise<string>} Envelope criptografado (formato CLANN1|v1|...)
  */
 export async function encryptMessage(clanId, plaintext) {
   try {
     // Obtém ou gera GroupKey do CLANN
     const groupKey = await KeyManager.getGroupKey(clanId);
     
-    // Criptografa mensagem
-    const encrypted = encryptAES(plaintext, groupKey);
+    // Criptografa mensagem com envelope CLANN1
+    const envelope = encryptEnvelope(plaintext, groupKey);
     
-    return encrypted;
+    return envelope;
   } catch (error) {
     console.error('Erro ao criptografar mensagem:', error);
     throw new Error('Falha ao criptografar mensagem');
@@ -127,22 +237,28 @@ export async function encryptMessage(clanId, plaintext) {
 
 /**
  * Descriptografa uma mensagem de um CLANN
+ * Valida HMAC antes de descriptografar
  * @param {number} clanId - ID do CLANN
- * @param {string} encrypted - Mensagem criptografada em base64
- * @returns {Promise<string>} Texto descriptografado
+ * @param {string} encrypted - Envelope criptografado (formato CLANN1|v1|... ou formato antigo)
+ * @returns {Promise<{ok: boolean, text?: string}>} Resultado da descriptografia
  */
 export async function decryptMessage(clanId, encrypted) {
   try {
     // Obtém GroupKey do CLANN
     const groupKey = await KeyManager.getGroupKey(clanId);
     
-    // Descriptografa mensagem
-    const decrypted = decryptAES(encrypted, groupKey);
+    // Verificar se é envelope CLANN1
+    if (encrypted && encrypted.startsWith('CLANN1|')) {
+      // Novo formato com envelope e HMAC
+      return decryptEnvelope(encrypted, groupKey);
+    }
     
-    return decrypted;
+    // Formato antigo (sem envelope) - retornar ok: false
+    // Não tentar descriptografar mensagens antigas sem envelope
+    return { ok: false };
   } catch (error) {
     console.error('Erro ao descriptografar mensagem:', error);
-    throw new Error('Falha ao descriptografar mensagem');
+    return { ok: false };
   }
 }
 

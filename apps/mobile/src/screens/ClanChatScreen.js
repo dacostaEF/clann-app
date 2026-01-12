@@ -72,6 +72,35 @@ export default function ClanChatScreen() {
     flatListRef.current?.scrollToEnd({ animated: true });
   }, []);
 
+  // ✅ HELPER: Gatekeeper centralizado - bloqueia ciphertext SEMPRE
+  // Esta função DEVE ser usada em TODOS os setMessages() que recebem dados do banco
+  const validateMessagesForUI = useCallback((messages) => {
+    if (!Array.isArray(messages)) return messages;
+    
+    return messages.map(msg => {
+      const text = msg.message || '';
+      // Detectar ciphertext provável (padrão U2FsdGVkX1, base64 longo, etc.)
+      const looksLikeCiphertext = text && text.length > 20 && (
+        text.includes('U2FsdGVkX1') || // Padrão comum de ciphertext
+        (/^[A-Za-z0-9+/=]{30,}$/.test(text) && !text.includes(' ')) // Base64 longo sem espaços
+      );
+      
+      if (looksLikeCiphertext && text !== '[Mensagem criptografada - não foi possível descriptografar]') {
+        console.error('[GATEKEEPER] Ciphertext detectado na UI!', {
+          id: msg.id,
+          preview: text.substring(0, 50),
+          authorTotem: msg.authorTotem
+        });
+        return {
+          ...msg,
+          message: '[Mensagem criptografada - não foi possível descriptografar]',
+          _isEncrypted: true
+        };
+      }
+      return msg;
+    });
+  }, []);
+
   // PASSO 3 — Inicialização com módulos avançados opcionais
   useEffect(() => {
     // Inicializar MessagesManager (só uma vez) - opcional
@@ -240,47 +269,17 @@ export default function ClanChatScreen() {
         // Recarregar mensagens para obter status atualizado
         const updatedMsgs = await MessagesManager.getMessages(targetClanId);
         
-        // PASSO 6: Merge simplificado - mensagens do banco já incluem status
-        setMessages(prevMessages => {
-          // 1. Separar mensagens otimistas temporárias (id começando com 'temp_')
-          const optimisticMsgs = prevMessages.filter(m => m.id && m.id.toString().startsWith('temp_'));
-          
-          // 2. Mesclar mensagens reais do storage (que já têm status do banco)
-          const mergedReals = updatedMsgs.map(real => {
-            // Procurar otimista correspondente (para substituir temporária pela real)
-            const matchingOptimistic = optimisticMsgs.find(opt => 
-              opt.message === real.message &&
-              opt.authorTotem === real.authorTotem &&
-              Math.abs(opt.timestamp - real.timestamp) < 10000
-            );
-            
-            // Se encontrou otimista correspondente, usa a real (com status do banco)
-            if (matchingOptimistic) {
-              return real; // Status já vem do banco ('sending', 'sent', 'pending_sync')
-            }
-            
-            // Caso contrário, retorna a mensagem real (com status do banco)
-            return real;
-          });
-          
-          // 3. Manter otimistas ainda não confirmadas (não têm correspondente real ainda)
-          const stillPending = optimisticMsgs.filter(opt =>
-            !updatedMsgs.some(real =>
-              real.message === opt.message &&
-              real.authorTotem === opt.authorTotem &&
-              Math.abs(opt.timestamp - real.timestamp) < 10000
-            )
-          );
-          
-          // 4. Combinar mensagens reais (com status do banco) com otimistas pendentes
-          const allMessages = [...mergedReals, ...stillPending];
-          
-          // 5. Ordenar por timestamp crescente (antigas primeiro, novas por último)
-          const sortedMessages = allMessages.sort((a, b) => a.timestamp - b.timestamp);
-          
-          console.log('[loadMessages] setting messages, count:', sortedMessages.length);
-          return sortedMessages;
-        });
+        // ✅ PASSO 1: Fonte única de verdade - substituir estado inteiro pelo banco (SEM merge)
+        // Mensagens otimistas são descartadas aqui (serão substituídas pela versão do banco)
+        const sortedMessages = updatedMsgs.sort((a, b) => a.timestamp - b.timestamp);
+        
+        // ✅ PASSO 3: Gatekeeper - bloquear ciphertext antes do setMessages (SEMPRE ATIVO)
+        const validatedMessages = validateMessagesForUI(sortedMessages);
+        
+        // Substituir estado inteiro (não fazer merge)
+        setMessages(validatedMessages);
+        
+        console.log('[loadMessages] setting messages, count:', validatedMessages.length);
         
         // Scroll para nova mensagem após carregar
         setTimeout(() => {
@@ -292,44 +291,18 @@ export default function ClanChatScreen() {
       } else {
         // 🔍 LOG DIAGNÓSTICO: Sem mensagens recebidas
         console.log('🔍 [DIAGNÓSTICO] Nenhuma mensagem recebida, processando apenas mensagens do banco');
-        // PASSO 6: Mesmo quando não há mensagens recebidas, usar mensagens do banco (com status)
-        setMessages(prevMessages => {
-          console.log('🔍 [DIAGNÓSTICO] prevMessages.length:', prevMessages.length);
-          // 1. Separar mensagens otimistas temporárias
-          const optimisticMsgs = prevMessages.filter(m => m.id && m.id.toString().startsWith('temp_'));
-          
-          // 2. Mesclar mensagens reais do storage (que já têm status do banco)
-          const mergedReals = msgs.map(real => {
-            const matchingOptimistic = optimisticMsgs.find(opt => 
-              opt.message === real.message &&
-              opt.authorTotem === real.authorTotem &&
-              Math.abs(opt.timestamp - real.timestamp) < 10000
-            );
-            
-            if (matchingOptimistic) {
-              return real; // Status já vem do banco
-            }
-            
-            return real; // Status já vem do banco
-          });
-          
-          // 3. Manter otimistas ainda não confirmadas
-          const stillPending = optimisticMsgs.filter(opt =>
-            !msgs.some(real =>
-              real.message === opt.message &&
-              real.authorTotem === opt.authorTotem &&
-              Math.abs(opt.timestamp - real.timestamp) < 10000
-            )
-          );
-          
-          // 4. Combinar e ordenar
-          const allMessages = [...mergedReals, ...stillPending];
-          const sortedMessages = allMessages.sort((a, b) => a.timestamp - b.timestamp);
-          
-          console.log('[loadMessages] setting messages, count:', sortedMessages.length);
-          console.log('🔍 [DIAGNÓSTICO] Mensagens finais após merge (sem recebidas):', sortedMessages.length);
-          return sortedMessages;
-        });
+        // ✅ PASSO 1: Fonte única de verdade - substituir estado inteiro pelo banco (SEM merge)
+        // Mensagens otimistas são descartadas aqui (serão substituídas pela versão do banco)
+        const sortedMessages = msgs.sort((a, b) => a.timestamp - b.timestamp);
+        
+        // ✅ PASSO 3: Gatekeeper - bloquear ciphertext antes do setMessages (SEMPRE ATIVO)
+        const validatedMessages = validateMessagesForUI(sortedMessages);
+        
+        // Substituir estado inteiro (não fazer merge)
+        setMessages(validatedMessages);
+        
+        console.log('[loadMessages] setting messages, count:', validatedMessages.length);
+        console.log('🔍 [DIAGNÓSTICO] Mensagens finais (sem recebidas):', validatedMessages.length);
         
         // Scroll para nova mensagem após carregar
         setTimeout(() => {
@@ -358,28 +331,19 @@ export default function ClanChatScreen() {
     if (!deltaMessages || deltaMessages.length === 0 || !clan?.id) return;
 
     try {
-      // Obter mensagens atuais e mesclar com deltas
-      setMessages(prevMessages => {
-        // Processar merge de forma assíncrona
-        MessagesManager.mergeDelta(deltaMessages, prevMessages).then(mergedMessages => {
-          setMessages(mergedMessages);
-          
-          // Atualizar último timestamp no SyncManager
-          if (deltaMessages.length > 0) {
-            const maxTimestamp = Math.max(...deltaMessages.map(m => m.timestamp || 0));
-            SyncManager.updateLastTimestamp(clan.id, maxTimestamp);
-          }
-        }).catch(err => {
-          console.error('Erro ao mesclar deltas:', err);
-        });
-        
-        // Retornar estado anterior enquanto processa (evita flicker)
-        return prevMessages;
-      });
+      // ✅ PASSO 1: Fonte única de verdade - reconstruir estado inteiro do banco
+      // Deltas já foram persistidos, então apenas recarregar do banco (SEM merge)
+      await loadMessages();
+      
+      // Atualizar último timestamp no SyncManager
+      if (deltaMessages.length > 0) {
+        const maxTimestamp = Math.max(...deltaMessages.map(m => m.timestamp || 0));
+        SyncManager.updateLastTimestamp(clan.id, maxTimestamp);
+      }
     } catch (error) {
       console.error('Erro ao processar deltas:', error);
     }
-  }, [clan?.id]);
+  }, [clan?.id, loadMessages]);
 
   // Iniciar/parar sincronização (Sprint 6 - ETAPA 6)
   useEffect(() => {
@@ -723,13 +687,15 @@ export default function ClanChatScreen() {
       );
 
       // Atualizar reações na mensagem local
-      setMessages(prevMessages => 
-        prevMessages.map(msg => 
+      // ✅ Garantir que não preserve ciphertext do estado anterior
+      setMessages(prevMessages => {
+        const updated = prevMessages.map(msg => 
           msg.id === selectedMessageId
             ? { ...msg, reactions: updatedReactions }
             : msg
-        )
-      );
+        );
+        return validateMessagesForUI(updated);
+      });
 
       setReactionPickerVisible(false);
       setSelectedMessageId(null);
@@ -751,13 +717,15 @@ export default function ClanChatScreen() {
       );
 
       // Atualizar reações na mensagem local
-      setMessages(prevMessages => 
-        prevMessages.map(msg => 
+      // ✅ Garantir que não preserve ciphertext do estado anterior
+      setMessages(prevMessages => {
+        const updated = prevMessages.map(msg => 
           msg.id === messageId
             ? { ...msg, reactions: updatedReactions }
             : msg
-        )
-      );
+        );
+        return validateMessagesForUI(updated);
+      });
     } catch (error) {
       console.error('Erro ao alternar reação:', error);
     }

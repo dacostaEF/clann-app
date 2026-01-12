@@ -270,13 +270,19 @@ class MessagesManager {
       }
 
       // 2. Descriptografar LOCALMENTE usando a função existente
-      const decryptedContent = await decryptMessage(
+      const decryptResult = await decryptMessage(
         parseInt(payload.clannId),
         payload.encryptedPayload
       );
 
+      // Se descriptografia falhou, não processar mensagem
+      if (!decryptResult.ok) {
+        console.warn('⚠️ Mensagem do Gateway não pôde ser descriptografada (sem envelope ou HMAC inválido)');
+        return;
+      }
+
       // 3. Descomprimir texto
-      const decompressedText = decompressText(decryptedContent);
+      const decompressedText = decompressText(decryptResult.text);
 
       // 4. Salvar localmente (persistência)
       const savedMessage = await this.storage.addMessage(
@@ -589,12 +595,15 @@ class MessagesManager {
             
             // Se não foi deletada, descriptografar normalmente
             if (!isDeleted) {
-              try {
-                const encryptedText = await decryptMessage(parseInt(clanId), msg.message);
-                // Descomprimir texto após descriptografar (Sprint 7 - ETAPA 6)
-                decryptedText = decompressText(encryptedText);
-              } catch (error) {
-                decryptedText = '[Mensagem criptografada - não foi possível descriptografar]';
+              // ✅ PASSO 3: decryptMessage agora retorna {ok: boolean, text?: string}
+              const result = await decryptMessage(parseInt(clanId), msg.message);
+              
+              if (!result.ok) {
+                // Mensagem sem envelope ou HMAC inválido = descartar
+                decryptedText = '[Mensagem indisponível]';
+              } else {
+                // Mensagem válida, descomprimir texto após descriptografar (Sprint 7 - ETAPA 6)
+                decryptedText = decompressText(result.text);
               }
             }
             
@@ -614,6 +623,9 @@ class MessagesManager {
             // Carregar status de entrega (Sprint 6 - ETAPA 4)
             const deliveryStatus = await DeliveryManager.loadStatus(msg.id);
             
+            // ✅ PASSO 3: Flag interna para indicar se mensagem foi descartada
+            const isDiscarded = decryptedText === '[Mensagem indisponível]';
+            
             return {
               id: msg.id,
               clanId: msg.clan_id,
@@ -628,19 +640,21 @@ class MessagesManager {
               edited: msg.edited === 1 || msg.edited === true,
               deleted: isDeleted,
               editedAt: msg.edited_at || null,
-              status: msg.status || 'sent' // PASSO 4: Retornar status (default 'sent' para compatibilidade)
+              status: msg.status || 'sent', // PASSO 4: Retornar status (default 'sent' para compatibilidade)
+              _discarded: isDiscarded // Flag interna (não expor na UI)
             };
           } catch (error) {
-            // Se falhar ao descriptografar, retorna mensagem de erro
-            console.warn('Erro ao descriptografar mensagem:', error);
+            // Se falhar ao processar mensagem, retorna mensagem indisponível
+            console.warn('Erro ao processar mensagem:', error);
             return {
               id: msg.id,
               clanId: msg.clan_id,
               authorTotem: msg.author_totem,
-              message: '[Mensagem criptografada - não foi possível descriptografar]',
+              message: '[Mensagem indisponível]',
               timestamp: msg.timestamp,
               error: true,
-              status: msg.status || 'sent' // PASSO 4: Retornar status mesmo em caso de erro
+              status: msg.status || 'sent', // PASSO 4: Retornar status mesmo em caso de erro
+              _discarded: true // Flag interna
             };
           }
         })
@@ -1014,9 +1028,14 @@ class MessagesManager {
       
       if (!isDeleted) {
         try {
-          decryptedText = await decryptMessage(parseInt(msg.clan_id), msg.message);
+          const decryptResult = await decryptMessage(parseInt(msg.clan_id), msg.message);
+          if (!decryptResult.ok) {
+            decryptedText = '[Mensagem indisponível]';
+          } else {
+            decryptedText = decryptResult.text;
+          }
         } catch (error) {
-          decryptedText = '[Mensagem criptografada - não foi possível descriptografar]';
+          decryptedText = '[Mensagem indisponível]';
         }
       }
 
