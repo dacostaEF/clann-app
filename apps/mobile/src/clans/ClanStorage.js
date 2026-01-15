@@ -510,14 +510,14 @@ class ClanStorage {
   // ---------------------------------------------------------
   // Entrar no CLANN via invite code
   // ---------------------------------------------------------
-  joinClan(inviteCode, totemId) {
+  async joinClan(inviteCode, totemId) {
     if (Platform.OS === 'web' || !this.db) {
       // Na Web, busca no localStorage
       const clans = this._getWebClans();
       const clan = clans.find(c => c.invite_code === inviteCode.toUpperCase());
       
       if (!clan) {
-        return Promise.reject(new Error('Código de convite inválido'));
+        throw new Error('Código de convite inválido');
       }
 
       // Verifica se já é membro
@@ -527,7 +527,7 @@ class ClanStorage {
       );
 
       if (alreadyMember) {
-        return Promise.reject(new Error('Você já é membro deste CLANN'));
+        throw new Error('Você já é membro deste CLANN');
       }
 
       // Adiciona como membro
@@ -540,41 +540,33 @@ class ClanStorage {
       });
       this._saveWebMembers(members);
 
-      return Promise.resolve(clan);
+      return clan;
     }
 
-    return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
+    // Busca o clan pelo invite_code
+    const clan = await this.db.getFirstAsync(
+      `SELECT * FROM clans WHERE invite_code = ? LIMIT 1;`,
+      [inviteCode]
+    );
 
-        tx.executeSql(
-          `SELECT * FROM clans WHERE invite_code = ? LIMIT 1;`,
-          [inviteCode],
-          (_, { rows }) => {
-            if (rows.length === 0) {
-              reject(new Error("Código de convite inválido"));
-              return;
-            }
+    if (!clan) {
+      throw new Error('Código de convite inválido');
+    }
 
-            const clan = rows.item(0);
+    // Insere como membro
+    await this.db.runAsync(
+      `INSERT INTO clan_members (clan_id, totem_id, role, joined_at)
+       VALUES (?, ?, 'member', datetime('now'));`,
+      [clan.id, totemId]
+    );
 
-            tx.executeSql(
-              `INSERT INTO clan_members (clan_id, totem_id, role, joined_at)
-               VALUES (?, ?, 'member', datetime('now'));`,
-              [clan.id, totemId],
-              () => resolve(clan),
-              (_, err) => reject(err)
-            );
-          }
-        );
-
-      });
-    });
+    return clan;
   }
 
   // ---------------------------------------------------------
   // Sair do CLANN
   // ---------------------------------------------------------
-  leaveClan(clanId, totemId) {
+  async leaveClan(clanId, totemId) {
     if (Platform.OS === 'web' || !this.db) {
       // Na Web, remove do localStorage
       const members = this._getWebMembers();
@@ -582,19 +574,15 @@ class ClanStorage {
         m => !(m.clan_id === parseInt(clanId) && m.totem_id === totemId)
       );
       this._saveWebMembers(filtered);
-      return Promise.resolve(true);
+      return true;
     }
 
-    return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
-        tx.executeSql(
-          `DELETE FROM clan_members WHERE clan_id = ? AND totem_id = ?;`,
-          [clanId, totemId],
-          () => resolve(true),
-          (_, err) => reject(err)
-        );
-      });
-    });
+    await this.db.runAsync(
+      `DELETE FROM clan_members WHERE clan_id = ? AND totem_id = ?;`,
+      [clanId, totemId]
+    );
+
+    return true;
   }
 
   // ---------------------------------------------------------
