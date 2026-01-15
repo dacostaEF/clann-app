@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,13 +13,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import QRScannerModal from '../components/QRScannerModal';
 import ClanManager from '../clans/ClanManager';
+import ClanStorage from '../clans/ClanStorage';
 import { getCurrentTotemId } from '../crypto/totemStorage';
+import { loadTotemSecure } from '../storage/secureStore';
+import MessagesManager from '../messages/MessagesManager';
+import KeyExchangeService from '../services/KeyExchangeService';
 
 export default function JoinClanScreen() {
   const navigation = useNavigation();
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+
+  // Inicializar KeyExchangeService quando Gateway estiver disponível
+  useEffect(() => {
+    if (MessagesManager.gatewayClient) {
+      KeyExchangeService.init(MessagesManager.gatewayClient);
+    }
+  }, []);
 
   const handleJoinByCode = async () => {
     const code = inviteCode.toUpperCase().replace(/\s/g, '');
@@ -30,15 +42,44 @@ export default function JoinClanScreen() {
     }
 
     setLoading(true);
+    setStatusMessage('Entrando no CLANN...');
     
     try {
       const totemId = await getCurrentTotemId(); 
       
+      // 1. Primeiro, fazer o join local (adiciona como membro)
       const clan = await ClanManager.joinClan(code, totemId);
+      
+      // 2. MVP 1: Tentar Key Exchange via Gateway (se disponível)
+      let keyExchangeSuccess = false;
+      if (MessagesManager.isGatewayAvailable() && MessagesManager.gatewayClient) {
+        try {
+          setStatusMessage('Obtendo chave do grupo...');
+          
+          // Inicializar KeyExchangeService se necessário
+          KeyExchangeService.init(MessagesManager.gatewayClient);
+          
+          // Iniciar fluxo de key exchange
+          await KeyExchangeService.initiateJoin(code, clan.id);
+          keyExchangeSuccess = true;
+          
+          console.log('[JoinClan] Key Exchange concluído com sucesso');
+        } catch (keyExchangeError) {
+          // Key Exchange falhou, mas join local foi bem-sucedido
+          console.warn('[JoinClan] Key Exchange falhou (fundador pode estar offline):', keyExchangeError.message);
+          // Não bloqueia o join - a chave será obtida quando o fundador estiver online
+        }
+      }
+      
+      setStatusMessage('');
+      
+      const successMessage = keyExchangeSuccess 
+        ? `Bem-vindo(a) ao "${clan.name}"` 
+        : `Bem-vindo(a) ao "${clan.name}"\n\n(Chave do grupo será sincronizada quando o fundador estiver online)`;
       
       Alert.alert(
         'Entrou no CLANN!',
-        `Bem-vindo(a) ao "${clan.name}"`,
+        successMessage,
         [
           {
             text: 'Ir para CLANN',
@@ -51,6 +92,7 @@ export default function JoinClanScreen() {
       );
       
     } catch (error) {
+      setStatusMessage('');
       Alert.alert('Erro ao entrar', error.message);
     } finally {
       setLoading(false);

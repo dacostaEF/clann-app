@@ -59,6 +59,36 @@ class ClanStorage {
     } else {
       this.db = null; // No web, não há banco
     }
+    this.dbInitPromise = null; // Lock para evitar corridas de inicialização
+  }
+
+  // ---------------------------------------------------------
+  // Garantir inicialização única do DB (com lock)
+  // ---------------------------------------------------------
+  async ensureDb() {
+    if (Platform.OS === 'web') {
+      return null; // Web usa localStorage
+    }
+
+    // Se já está inicializado, retorna imediatamente
+    if (this.db) {
+      return this.db;
+    }
+
+    // Se não há promise de inicialização, cria uma (lock)
+    if (!this.dbInitPromise) {
+      this.dbInitPromise = (async () => {
+        const db = await getDatabase();
+        if (!db) {
+          throw new Error('[FATAL] DB não inicializado - getDatabase() retornou null');
+        }
+        this.db = db;
+        return db;
+      })();
+    }
+
+    // Aguarda a promise de inicialização (mesma para todas as chamadas simultâneas)
+    return await this.dbInitPromise;
   }
 
   // ---------------------------------------------------------
@@ -424,7 +454,7 @@ class ClanStorage {
   // ---------------------------------------------------------
   // Criar CLANN
   // ---------------------------------------------------------
-  async createClan(data, totemId) {
+  async createClan(data, totemId, founderPublicKey = null) {
     if (Platform.OS === 'web' || !this.db) {
       // Na Web, salva no localStorage
       const invite = this._generateInviteCode();
@@ -439,7 +469,8 @@ class ClanStorage {
         invite_code: invite,
         privacy: data.privacy || 'public',
         created_at: now,
-        founder_totem: totemId
+        founder_totem: totemId,
+        founder_public_key: founderPublicKey // MVP 1: Key Exchange
       };
 
       // Salva o CLANN
@@ -447,14 +478,15 @@ class ClanStorage {
       clans.push(newClan);
       this._saveWebClans(clans);
 
-      // Salva o membro (fundador)
+      // Salva o membro (fundador) com public_key
       const members = this._getWebMembers();
       members.push({
         id: Date.now() + 1,
         clan_id: clanId,
         totem_id: totemId,
         role: 'founder',
-        joined_at: now
+        joined_at: now,
+        public_key: founderPublicKey // MVP 1: Key Exchange
       });
       this._saveWebMembers(members);
 
@@ -474,10 +506,22 @@ class ClanStorage {
 
     // ✅ Migrado para API async - runAsync para INSERTs
     try {
+      // Migration: garantir que coluna founder_public_key existe
+      try {
+        await this.db.execAsync(`ALTER TABLE clans ADD COLUMN founder_public_key TEXT;`);
+      } catch (e) {
+        // Ignora se coluna já existe
+      }
+      try {
+        await this.db.execAsync(`ALTER TABLE clan_members ADD COLUMN public_key TEXT;`);
+      } catch (e) {
+        // Ignora se coluna já existe
+      }
+
       const result = await this.db.runAsync(
-        `INSERT INTO clans (name, icon, description, invite_code, privacy, created_at, founder_totem)
-         VALUES (?, ?, ?, ?, ?, datetime('now'), ?);`,
-        [data.name, data.icon, data.description || null, invite, data.privacy || 'public', totemId]
+        `INSERT INTO clans (name, icon, description, invite_code, privacy, created_at, founder_totem, founder_public_key)
+         VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?);`,
+        [data.name, data.icon, data.description || null, invite, data.privacy || 'public', totemId, founderPublicKey]
       );
 
       const clanId = result.lastInsertRowId;
@@ -488,11 +532,11 @@ class ClanStorage {
         totemId: totemId 
       });
 
-      // Inserir o fundador como membro
+      // Inserir o fundador como membro com public_key
       await this.db.runAsync(
-        `INSERT INTO clan_members (clan_id, totem_id, role, joined_at)
-         VALUES (?, ?, 'founder', datetime('now'));`,
-        [clanId, totemId]
+        `INSERT INTO clan_members (clan_id, totem_id, role, joined_at, public_key)
+         VALUES (?, ?, 'founder', datetime('now'), ?);`,
+        [clanId, totemId, founderPublicKey]
       );
 
       return {
@@ -583,6 +627,41 @@ class ClanStorage {
     );
 
     return true;
+  }
+
+  // ---------------------------------------------------------
+  // Buscar CLANN por código de convite (MVP 1: Key Exchange)
+  // ---------------------------------------------------------
+  async getClanByInviteCode(inviteCode) {
+    if (Platform.OS === 'web' || !this.db) {
+      const clans = this._getWebClans();
+      const clan = clans.find(c => c.invite_code === inviteCode.toUpperCase());
+      return clan || null;
+    }
+
+    const db = await this.ensureDb();
+    const result = await db.getFirstAsync(
+      `SELECT * FROM clans WHERE invite_code = ? LIMIT 1;`,
+      [inviteCode.toUpperCase()]
+    );
+    return result || null;
+  }
+
+  // ---------------------------------------------------------
+  // Buscar membros de um CLANN (MVP 1: Key Exchange)
+  // ---------------------------------------------------------
+  async getClanMembers(clanId) {
+    if (Platform.OS === 'web' || !this.db) {
+      const members = this._getWebMembers();
+      return members.filter(m => m.clan_id === parseInt(clanId));
+    }
+
+    const db = await this.ensureDb();
+    const results = await db.getAllAsync(
+      `SELECT * FROM clan_members WHERE clan_id = ?;`,
+      [parseInt(clanId)]
+    );
+    return results || [];
   }
 
   // ---------------------------------------------------------

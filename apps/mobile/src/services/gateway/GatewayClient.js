@@ -235,6 +235,15 @@ export class GatewayClient {
           // Resposta ao ping, apenas logar se necessário
           break;
 
+        // MVP 1: Key Exchange
+        case MESSAGE_TYPES.JOIN_REQUEST:
+          this.handleJoinRequest(message.payload);
+          break;
+
+        case MESSAGE_TYPES.JOIN_ACCEPT:
+          this.handleJoinAccept(message.payload);
+          break;
+
         default:
           console.warn(`⚠️ Tipo de mensagem desconhecido: ${message.type}`);
       }
@@ -305,6 +314,102 @@ export class GatewayClient {
     error.messageId = payload.messageId;
 
     this.notifyErrorHandlers(error);
+  }
+
+  // ==================== MVP 1: KEY EXCHANGE ====================
+
+  /**
+   * Handler para JOIN_REQUEST recebido (sou fundador/admin)
+   * @param {Object} payload - { inviteCode, joinerTotemId, joinerPublicKey, requestId, clannId }
+   */
+  handleJoinRequest(payload) {
+    console.log(`🔑 JOIN_REQUEST recebido de ${payload.joinerTotemId?.substring(0, 10)}...`);
+    
+    // Notificar handlers de status para que o app processe
+    this.statusHandlers.forEach((handler) => {
+      try {
+        handler({ 
+          type: 'join_request', 
+          ...payload 
+        });
+      } catch (error) {
+        console.error('Erro no handler de JOIN_REQUEST:', error);
+      }
+    });
+  }
+
+  /**
+   * Handler para JOIN_ACCEPT recebido (sou joiner)
+   * @param {Object} payload - { clannId, toTotemId, fromTotemId, encryptedGroupKey, requestId }
+   */
+  handleJoinAccept(payload) {
+    // Verificar se é para mim
+    if (payload.toTotemId !== this.totemId) {
+      // Não é para mim, ignorar silenciosamente
+      return;
+    }
+
+    console.log(`🔑 JOIN_ACCEPT recebido de ${payload.fromTotemId?.substring(0, 10)}...`);
+    
+    // Notificar handlers de status para que o app processe
+    this.statusHandlers.forEach((handler) => {
+      try {
+        handler({ 
+          type: 'join_accept', 
+          ...payload 
+        });
+      } catch (error) {
+        console.error('Erro no handler de JOIN_ACCEPT:', error);
+      }
+    });
+  }
+
+  /**
+   * Envia JOIN_REQUEST para o CLANN (joiner)
+   * @param {Object} params - { inviteCode, joinerTotemId, joinerPublicKey, requestId, clannId }
+   */
+  sendJoinRequest({ inviteCode, joinerTotemId, joinerPublicKey, requestId, clannId }) {
+    if (!this.isConnected || !this.isAuthenticated) {
+      throw new Error('Gateway não está conectado/autenticado');
+    }
+
+    const message = {
+      type: MESSAGE_TYPES.JOIN_REQUEST,
+      payload: {
+        inviteCode,
+        joinerTotemId,
+        joinerPublicKey,
+        requestId,
+        clannId
+      }
+    };
+
+    console.log(`📤 Enviando JOIN_REQUEST para CLANN ${clannId}`);
+    this.ws.send(JSON.stringify(message));
+  }
+
+  /**
+   * Envia JOIN_ACCEPT para o joiner (fundador/admin)
+   * @param {Object} params - { clannId, toTotemId, fromTotemId, encryptedGroupKey, requestId }
+   */
+  sendJoinAccept({ clannId, toTotemId, fromTotemId, encryptedGroupKey, requestId }) {
+    if (!this.isConnected || !this.isAuthenticated) {
+      throw new Error('Gateway não está conectado/autenticado');
+    }
+
+    const message = {
+      type: MESSAGE_TYPES.JOIN_ACCEPT,
+      payload: {
+        clannId,
+        toTotemId,
+        fromTotemId,
+        encryptedGroupKey,
+        requestId
+      }
+    };
+
+    console.log(`📤 Enviando JOIN_ACCEPT para ${toTotemId?.substring(0, 10)}...`);
+    this.ws.send(JSON.stringify(message));
   }
 
   // ==================== GERENCIAMENTO DE HANDLERS ====================

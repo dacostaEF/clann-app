@@ -1,6 +1,7 @@
 import ClanStorage from './ClanStorage';
 import { validateClanName, validateClanDescription } from '../config/ClanTypes';
 import { logSecurityEvent, SECURITY_EVENTS } from '../security/SecurityLog';
+import { loadTotemSecure } from '../storage/secureStore';
 
 export default class ClanManager {
   // Cria novo CLANN
@@ -12,8 +13,19 @@ export default class ClanManager {
     const descError = validateClanDescription(clanData.description);
     if (descError) throw new Error(descError);
     
-    // Cria CLANN
-    const clan = await ClanStorage.createClan(clanData, creatorTotemId);
+    // MVP 1: Obter publicKey do fundador para Key Exchange
+    let founderPublicKey = null;
+    try {
+      const totem = await loadTotemSecure();
+      if (totem && totem.publicKey) {
+        founderPublicKey = totem.publicKey;
+      }
+    } catch (e) {
+      console.warn('[ClanManager] Não foi possível obter publicKey do fundador');
+    }
+    
+    // Cria CLANN com publicKey do fundador
+    const clan = await ClanStorage.createClan(clanData, creatorTotemId, founderPublicKey);
     
     // Registra evento de auditoria (Sprint 7 - ETAPA 3)
     try {

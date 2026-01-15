@@ -87,11 +87,28 @@ class MessagesManager {
       // 4. Configurar handler para mensagens recebidas
       this.setupGatewayHandlers();
 
+      // 5. MVP 1: Inicializar KeyExchangeService
+      this.initKeyExchangeService();
+
       this.isGatewayConnected = true;
     } catch (error) {
       console.error('❌ Falha ao inicializar Gateway:', error);
       this.isGatewayConnected = false;
       // Não lança erro - Gateway é opcional por enquanto
+    }
+  }
+
+  /**
+   * MVP 1: Inicializar KeyExchangeService
+   */
+  initKeyExchangeService() {
+    try {
+      // Import dinâmico para evitar dependência circular
+      const KeyExchangeService = require('../services/KeyExchangeService').default;
+      KeyExchangeService.init(this.gatewayClient);
+      console.log('🔑 KeyExchangeService inicializado');
+    } catch (error) {
+      console.warn('⚠️ KeyExchangeService não disponível:', error.message);
     }
   }
 

@@ -81,6 +81,9 @@ export const MESSAGE_TYPES = {
   ERROR: 'error',
   PING: 'ping',
   PONG: 'pong',
+  // MVP 1: Key Exchange
+  JOIN_REQUEST: 'join_request',
+  JOIN_ACCEPT: 'join_accept',
 };
 
 // Status de entrega
