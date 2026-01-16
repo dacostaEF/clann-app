@@ -48,15 +48,16 @@ export const ARCHITECTURE_LIMITATIONS = {
 
 // Configurações padrão
 export const DEFAULT_CONFIG = {
-  GATEWAY_URL: process.env.EXPO_PUBLIC_GATEWAY_URL || 'ws://localhost:8080',
+  // GATEWAY_URL removido - deve vir exclusivamente de EXPO_PUBLIC_GATEWAY_URL
   MAX_RECONNECT_ATTEMPTS: 5,
   RECONNECT_BASE_DELAY: 1000,
   PING_INTERVAL: 30000,
   MESSAGE_TIMEOUT: 10000,
 };
 
-// URL padrão do Gateway (compatibilidade)
-export const DEFAULT_GATEWAY_URL = DEFAULT_CONFIG.GATEWAY_URL;
+// URL padrão do Gateway (compatibilidade) - REMOVIDO
+// Não usar fallback - validar em runtime
+export const DEFAULT_GATEWAY_URL = null; // Forçar validação explícita
 
 // Configurações de reconexão
 export const RECONNECTION_CONFIG = {

@@ -10,7 +10,6 @@
  */
 
 import {
-  DEFAULT_GATEWAY_URL,
   RECONNECTION_CONFIG,
   PING_INTERVAL,
   CONNECTION_TIMEOUT,
@@ -21,9 +20,17 @@ import { GatewayValidators } from './GatewayValidators';
 
 export class GatewayClient {
   constructor(options = {}) {
+    // Validar URL do Gateway - deve vir exclusivamente de EXPO_PUBLIC_GATEWAY_URL
+    const gatewayUrl = options.gatewayUrl || process.env.EXPO_PUBLIC_GATEWAY_URL;
+    
+    if (!gatewayUrl) {
+      console.error('[GatewayClient] EXPO_PUBLIC_GATEWAY_URL não definida');
+      throw new Error('Gateway URL ausente: EXPO_PUBLIC_GATEWAY_URL deve ser definida no .env');
+    }
+
     // Configuração injetável
     this.config = {
-      gatewayUrl: options.gatewayUrl || process.env.EXPO_PUBLIC_GATEWAY_URL || DEFAULT_GATEWAY_URL,
+      gatewayUrl,
       maxReconnectAttempts: options.maxReconnectAttempts || RECONNECTION_CONFIG.maxAttempts,
       reconnectBaseDelay: options.reconnectBaseDelay || RECONNECTION_CONFIG.baseDelay,
       pingInterval: options.pingInterval || PING_INTERVAL,
@@ -366,9 +373,10 @@ export class GatewayClient {
 
   /**
    * Envia JOIN_REQUEST para o CLANN (joiner)
-   * @param {Object} params - { inviteCode, joinerTotemId, joinerPublicKey, requestId, clannId }
+   * @param {Object} params - { inviteCode, joinerTotemId, joinerPublicKey, requestId }
+   * @note clannId não é enviado - fundador identificará pelo inviteCode
    */
-  sendJoinRequest({ inviteCode, joinerTotemId, joinerPublicKey, requestId, clannId }) {
+  sendJoinRequest({ inviteCode, joinerTotemId, joinerPublicKey, requestId }) {
     if (!this.isConnected || !this.isAuthenticated) {
       throw new Error('Gateway não está conectado/autenticado');
     }
@@ -379,12 +387,12 @@ export class GatewayClient {
         inviteCode,
         joinerTotemId,
         joinerPublicKey,
-        requestId,
-        clannId
+        requestId
+        // clannId removido: fundador identificará pelo inviteCode
       }
     };
 
-    console.log(`📤 Enviando JOIN_REQUEST para CLANN ${clannId}`);
+    console.log(`📤 Enviando JOIN_REQUEST com código: ${inviteCode.slice(0, 2)}***`);
     this.ws.send(JSON.stringify(message));
   }
 

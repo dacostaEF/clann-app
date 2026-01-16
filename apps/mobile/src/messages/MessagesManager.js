@@ -75,8 +75,16 @@ class MessagesManager {
       }
 
       // 2. Criar cliente usando a factory
+      // Validar URL do Gateway - deve vir exclusivamente de EXPO_PUBLIC_GATEWAY_URL
+      const gatewayUrl = process.env.EXPO_PUBLIC_GATEWAY_URL;
+      
+      if (!gatewayUrl) {
+        console.error('[MessagesManager] EXPO_PUBLIC_GATEWAY_URL não definida');
+        throw new Error('Gateway URL ausente: EXPO_PUBLIC_GATEWAY_URL deve ser definida no .env');
+      }
+
       this.gatewayClient = createGatewayClient({
-        gatewayUrl: process.env.EXPO_PUBLIC_GATEWAY_URL || 'ws://localhost:8080',
+        gatewayUrl,
       });
 
       // 3. Conectar com credenciais do Totem e clannId (se fornecido)

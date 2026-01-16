@@ -77,12 +77,13 @@ class KeyExchangeService {
     const resultPromise = registerPendingRequest(requestId);
 
     // 4. Enviar JOIN_REQUEST via Gateway
+    // 🚫 NÃO INCLUIR 'clannId' AQUI. O fundador o identificará pelo inviteCode.
     this.gatewayClient.sendJoinRequest({
       inviteCode,
       joinerTotemId: myTotem.totemId,
       joinerPublicKey: myTotem.publicKey,
-      requestId,
-      clannId: clannId.toString()
+      requestId
+      // clannId removido: fundador identificará pelo inviteCode
     });
 
     // 5. Aguardar JOIN_ACCEPT (ou timeout)
