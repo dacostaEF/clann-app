@@ -164,10 +164,15 @@ export default function WelcomeScreen() {
             console.log('[WelcomeScreen] Totem criado e injetado no context. ID:', totemId);
             
             // INICIALIZAR GATEWAY APÓS CRIAÇÃO DO TOTEM (Fase 3)
+            // Gateway é opcional durante onboarding (required: false)
             try {
-              await MessagesManager.initializeGateway();
-              console.log('🌍 Totem conectado ao Gateway CLANN!');
-              console.log('   Comunicação internacional agora disponível');
+              const success = await MessagesManager.initializeGateway(null, { required: false });
+              if (success) {
+                console.log('🌍 Totem conectado ao Gateway CLANN!');
+                console.log('   Comunicação internacional agora disponível');
+              } else {
+                console.warn('⚠️ Gateway não disponível, modo local apenas');
+              }
             } catch (error) {
               console.error('⚠️ Gateway não disponível, modo local apenas:', error);
               // O app continua funcionando localmente

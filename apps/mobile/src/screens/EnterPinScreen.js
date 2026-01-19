@@ -181,15 +181,44 @@ export default function EnterPinScreen({ navigation, onSuccess }) {
   };
 
   const handleSuccess = async () => {
-    // ✅ NOVO: Inicializar Gateway após PIN validado
+    console.log('🔐 [AUTH] PIN validado. Iniciando fluxo pós-autenticação...');
+
+    // 🚨 Inicialização obrigatória do Gateway para funcionalidades sociais
+    console.log('🌐 [GATEWAY] Chamando initializeGateway() com required: true...');
     try {
-      await MessagesManager.initializeGateway();
-      console.log('🌍 Gateway conectado após autenticação');
+      const success = await MessagesManager.initializeGateway(null, { required: true });
+      
+      if (!success) {
+        throw new Error('initializeGateway() retornou false');
+      }
+
+      console.log('✅ [GATEWAY] initializeGateway() finalizada');
+
+      // Validação adicional: verificar se realmente está disponível
+      if (!MessagesManager.isGatewayAvailable()) {
+        throw new Error('Gateway inicializado mas isGatewayAvailable() retornou false');
+      }
+
+      console.log('✅ [GATEWAY] Gateway confirmado como disponível');
     } catch (error) {
-      console.warn('⚠️ Gateway não disponível, modo local apenas:', error);
-      // Não bloqueia o acesso - Gateway é opcional
+      console.error('❌ [GATEWAY] Falha crítica na inicialização:', {
+        message: error.message,
+        stack: error.stack
+      });
+
+      // Alert informativo (não bloqueia, mas avisa)
+      Alert.alert(
+        'Conexão indisponível',
+        'Não foi possível conectar ao serviço de comunicação.\n\n' +
+        'Recursos de convite e mensagens em tempo real não estarão disponíveis.\n\n' +
+        'Você pode continuar usando o app em modo local.',
+        [{ text: 'Entendi', style: 'default' }]
+      );
+
+      // Continua o fluxo mesmo com Gateway indisponível (modo local)
     }
 
+    // Continuação do fluxo normal (navegação)
     if (onSuccess) {
       onSuccess();
     } else {

@@ -26,6 +26,7 @@ import { saveTotemSecure } from '../../storage/secureStore';
 import { useTotem } from '../../context/TotemContext';
 import MessagesManager from '../../messages/MessagesManager';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import logger from '../../utils/logger';
 
 // CSS Global para animações na Web
 const globalCSS = `
@@ -191,18 +192,44 @@ export default function TotemGenerationScreen({ navigation }) {
         setTotem(newTotem);
         setTotemData(newTotem);
 
-        // INICIALIZAR GATEWAY APÓS CRIAÇÃO DO TOTEM (Fase 3)
-        try {
-          await MessagesManager.initializeGateway();
-          console.log('🌍 Totem conectado ao Gateway CLANN!');
-          console.log('   Comunicação internacional agora disponível');
-        } catch (error) {
-          console.error('⚠️ Gateway não disponível, modo local apenas:', error);
-          // O app continua funcionando localmente
-        }
-
-        // Delay para mostrar a animação
+        // ✅ LIBERAR UI PRIMEIRO (não bloquear durante Gateway)
+        // Delay para mostrar a animação de conclusão
         setTimeout(() => setLoading(false), 800);
+
+        // ✅ INICIALIZAR GATEWAY EM BACKGROUND (não bloqueia UI)
+        // Gateway é opcional durante onboarding (required: false)
+        // Executa de forma assíncrona, sem bloquear a renderização
+        logger.gateway('Inicializando Gateway após criação do Totem (background)');
+        const gatewayStartTime = Date.now();
+        
+        MessagesManager.initializeGateway(null, { required: false })
+          .then(success => {
+            const duration = Date.now() - gatewayStartTime;
+            if (success) {
+              logger.gateway('Gateway conectado com sucesso', { duration: `${duration}ms` });
+              console.log('🌍 Totem conectado ao Gateway CLANN!');
+              console.log('   Comunicação internacional agora disponível');
+            } else {
+              console.warn('⚠️ Gateway não disponível, modo local apenas');
+            }
+          })
+          .catch(error => {
+            logger.error('Gateway', 'Falha ao inicializar Gateway', error);
+            console.error('⚠️ Gateway não disponível, modo local apenas:', error);
+            // O app continua funcionando localmente (fallback seguro)
+          });
+
+        // ✅ NAVEGAÇÃO AUTOMÁTICA após conclusão (UX fluida)
+        // Aguarda tempo suficiente para mostrar "Seu Totem está emergindo"
+        // e então navega automaticamente para RecoveryPhrase
+        setTimeout(() => {
+          if (newTotem?.recoveryPhrase) {
+            console.log('🔄 Navegação automática para RecoveryPhrase...');
+            navigation.navigate('RecoveryPhrase', { recoveryPhrase: newTotem.recoveryPhrase });
+          } else {
+            console.warn('⚠️ RecoveryPhrase não encontrada, navegação automática cancelada');
+          }
+        }, 2000); // 2 segundos: tempo suficiente para UX + Gateway iniciar
       } catch (error) {
         console.error('Erro ao gerar Totem:', error);
         Alert.alert('Erro', `Não foi possível gerar o Totem: ${error.message}`);

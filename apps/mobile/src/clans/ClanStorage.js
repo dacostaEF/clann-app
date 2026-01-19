@@ -1171,7 +1171,8 @@ class ClanStorage {
    */
   createClanForInvite(clanData, totemId) {
     if (Platform.OS === 'web' || !this.db) {
-      const invite = this._generateInviteCode();
+      // ✅ Usar inviteCode recebido do fundador (não gerar novo)
+      const invite = clanData.invite_code || this._generateInviteCode();
       const clanId = Date.now();
       const now = new Date().toISOString();
       
@@ -1216,11 +1217,15 @@ class ClanStorage {
       });
     }
 
-    const invite = this._generateInviteCode();
+    // ✅ Usar inviteCode recebido do fundador (não gerar novo)
+    const invite = clanData.invite_code || this._generateInviteCode();
 
-    return new Promise((resolve, reject) => {
-      this.db.transaction(tx => {
-        tx.executeSql(
+    // ✅ Migrado para API async
+    return (async () => {
+      const db = await this.ensureDb();
+      
+      try {
+        const result = await db.runAsync(
           `INSERT INTO clans (name, icon, description, invite_code, privacy, created_at, founder_totem)
            VALUES (?, ?, ?, ?, ?, datetime('now'), NULL);`,
           [
@@ -1229,44 +1234,43 @@ class ClanStorage {
             clanData.description || null,
             invite,
             clanData.privacy || 'public'
-          ],
-          (_, result) => {
-            const clanId = result.insertId;
-
-            // Adiciona o primeiro membro
-            tx.executeSql(
-              `INSERT INTO clan_members (clan_id, totem_id, role, joined_at)
-               VALUES (?, ?, 'member', datetime('now'));`,
-              [clanId, totemId],
-              () => {
-                // Tenta adicionar external_clann_id se a coluna existir
-                // (migração futura pode adicionar essa coluna)
-                tx.executeSql(
-                  `UPDATE clans SET external_clann_id = ? WHERE id = ?;`,
-                  [clanData.external_clann_id, clanId],
-                  () => {},
-                  () => {} // Ignora erro se coluna não existir
-                );
-
-                resolve({
-                  id: clanId,
-                  name: clanData.name,
-                  icon: clanData.icon || '🏛️',
-                  description: clanData.description || '',
-                  invite_code: invite,
-                  privacy: clanData.privacy || 'public',
-                  external_clann_id: clanData.external_clann_id,
-                  members: 1,
-                  role: 'member'
-                });
-              },
-              (_, err) => reject(err)
-            );
-          },
-          (_, error) => reject(error)
+          ]
         );
-      });
-    });
+        
+        const clanId = result.lastInsertRowId;
+
+        // Adiciona o primeiro membro
+        await db.runAsync(
+          `INSERT INTO clan_members (clan_id, totem_id, role, joined_at)
+           VALUES (?, ?, 'member', datetime('now'));`,
+          [clanId, totemId]
+        );
+
+        // Tenta adicionar external_clann_id se a coluna existir
+        try {
+          await db.runAsync(
+            `UPDATE clans SET external_clann_id = ? WHERE id = ?;`,
+            [clanData.external_clann_id, clanId]
+          );
+        } catch (e) {
+          // Ignora erro se coluna não existir
+        }
+
+        return {
+          id: clanId,
+          name: clanData.name,
+          icon: clanData.icon || '🏛️',
+          description: clanData.description || '',
+          invite_code: invite,
+          privacy: clanData.privacy || 'public',
+          external_clann_id: clanData.external_clann_id,
+          members: 1,
+          role: 'member'
+        };
+      } catch (error) {
+        throw error;
+      }
+    })();
   }
 
   // ---------------------------------------------------------

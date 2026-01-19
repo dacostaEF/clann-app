@@ -36,64 +36,71 @@ export default function JoinClanScreen() {
   const handleJoinByCode = async () => {
     const code = inviteCode.toUpperCase().replace(/\s/g, '');
     
+    // ✅ Validar apenas formato do código (não buscar localmente)
     if (!code.match(/^[A-Z0-9]{6}$/)) {
       Alert.alert('Código inválido', 'Use 6 letras ou números');
       return;
     }
 
     setLoading(true);
-    setStatusMessage('Entrando no CLANN...');
+    setStatusMessage('Enviando solicitação ao fundador...');
     
     try {
-      const totemId = await getCurrentTotemId(); 
+      const totemId = await getCurrentTotemId();
       
-      // 1. Primeiro, fazer o join local (adiciona como membro)
-      const clan = await ClanManager.joinClan(code, totemId);
-      
-      // 2. MVP 1: Tentar Key Exchange via Gateway (se disponível)
-      let keyExchangeSuccess = false;
-      if (MessagesManager.isGatewayAvailable() && MessagesManager.gatewayClient) {
-        try {
-          setStatusMessage('Obtendo chave do grupo...');
-          
-          // Inicializar KeyExchangeService se necessário
-          KeyExchangeService.init(MessagesManager.gatewayClient);
-          
-          // Iniciar fluxo de key exchange
-          await KeyExchangeService.initiateJoin(code, clan.id);
-          keyExchangeSuccess = true;
-          
-          console.log('[JoinClan] Key Exchange concluído com sucesso');
-        } catch (keyExchangeError) {
-          // Key Exchange falhou, mas join local foi bem-sucedido
-          console.warn('[JoinClan] Key Exchange falhou (fundador pode estar offline):', keyExchangeError.message);
-          // Não bloqueia o join - a chave será obtida quando o fundador estiver online
-        }
+      // ✅ FLUXO CORRETO: Enviar JOIN_REQUEST primeiro (sem buscar localmente)
+      if (!MessagesManager.isGatewayAvailable() || !MessagesManager.gatewayClient) {
+        Alert.alert('Gateway indisponível', 'Não foi possível contactar o fundador. Verifique sua conexão.');
+        return;
       }
+
+      // Inicializar KeyExchangeService se necessário
+      KeyExchangeService.init(MessagesManager.gatewayClient);
+      
+      setStatusMessage('Aguardando resposta do fundador...');
+      
+      // ✅ Enviar JOIN_REQUEST e aguardar JOIN_ACCEPT
+      // initiateJoin() retorna Promise que resolve quando JOIN_ACCEPT chega
+      const result = await KeyExchangeService.initiateJoin(code, null); // null = sem clannId (será criado após JOIN_ACCEPT)
       
       setStatusMessage('');
       
-      const successMessage = keyExchangeSuccess 
-        ? `Bem-vindo(a) ao "${clan.name}"` 
-        : `Bem-vindo(a) ao "${clan.name}"\n\n(Chave do grupo será sincronizada quando o fundador estiver online)`;
+      // Se chegou aqui, JOIN_ACCEPT foi recebido e CLANN foi criado localmente
+      const clanId = result.clannId;
       
-      Alert.alert(
-        'Entrou no CLANN!',
-        successMessage,
-        [
-          {
-            text: 'Ir para CLANN',
-            onPress: () => {
-              navigation.navigate('ClanDetail', { clanId: clan.id });
-              setInviteCode('');
+      if (clanId) {
+        Alert.alert(
+          'Entrou no CLANN!',
+          'Bem-vindo(a)! Você foi aceito no CLANN.',
+          [
+            {
+              text: 'Ir para CLANN',
+              onPress: () => {
+                navigation.navigate('ClanDetail', { clanId: parseInt(clanId) });
+                setInviteCode('');
+              }
             }
-          }
-        ]
-      );
+          ]
+        );
+      } else {
+        Alert.alert('Erro', 'Não foi possível obter informações do CLANN');
+      }
       
     } catch (error) {
       setStatusMessage('');
-      Alert.alert('Erro ao entrar', error.message);
+      
+      // Tratar diferentes tipos de erro
+      if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+        Alert.alert(
+          'Solicitação pendente',
+          'O fundador ainda não respondeu. Você será notificado quando for aceito.',
+          [{ text: 'OK' }]
+        );
+      } else if (error.message.includes('Gateway') || error.message.includes('conexão')) {
+        Alert.alert('Erro de conexão', 'Não foi possível contactar o fundador. Verifique sua conexão.');
+      } else {
+        Alert.alert('Erro ao entrar', error.message);
+      }
     } finally {
       setLoading(false);
     }

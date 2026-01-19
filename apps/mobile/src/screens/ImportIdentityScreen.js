@@ -94,10 +94,15 @@ export default function ImportIdentityScreen({ navigation }) {
       setTotem(totem);
       
       // INICIALIZAR GATEWAY APÓS IMPORTAÇÃO DO TOTEM (Fase 3)
+      // Gateway é opcional durante importação (required: false)
       try {
-        await MessagesManager.initializeGateway();
-        console.log('🌍 Totem conectado ao Gateway CLANN!');
-        console.log('   Comunicação internacional agora disponível');
+        const success = await MessagesManager.initializeGateway(null, { required: false });
+        if (success) {
+          console.log('🌍 Totem conectado ao Gateway CLANN!');
+          console.log('   Comunicação internacional agora disponível');
+        } else {
+          console.warn('⚠️ Gateway não disponível, modo local apenas');
+        }
       } catch (error) {
         console.error('⚠️ Gateway não disponível, modo local apenas:', error);
         // O app continua funcionando localmente

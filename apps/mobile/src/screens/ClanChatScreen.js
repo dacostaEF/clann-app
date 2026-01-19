@@ -410,11 +410,21 @@ export default function ClanChatScreen() {
     (async () => {
       try {
         if (MessagesManager.isGatewayAvailable && typeof MessagesManager.isGatewayAvailable === 'function') {
-          // registerClannGatewayHandler agora é async e garante conexão com clannId
-          await MessagesManager.registerClannGatewayHandler(clan.id);
+      // registerClannGatewayHandler agora é async e garante conexão com clannId
+      console.log('🏗️ [ClanChat] Tentando registrar handler. GatewayClient existe?', 
+        MessagesManager.gatewayClient ? 'Sim' : 'Não');
+      const handlerRegistered = await MessagesManager.registerClannGatewayHandler(clan.id);
+      if (!handlerRegistered) {
+        console.warn('⚠️ [ClanChat] Não foi possível registrar handler do Gateway. Continuando em modo local.');
+      }
         } else {
           // Se Gateway não está disponível, tentar inicializar com clannId
-          await MessagesManager.registerClannGatewayHandler(clan.id);
+          console.log('🏗️ [ClanChat] Gateway não disponível, tentando inicializar. GatewayClient existe?', 
+            MessagesManager.gatewayClient ? 'Sim' : 'Não');
+          const handlerRegistered = await MessagesManager.registerClannGatewayHandler(clan.id);
+          if (!handlerRegistered) {
+            console.warn('⚠️ [ClanChat] Não foi possível registrar handler do Gateway. Continuando em modo local.');
+          }
         }
       } catch (gatewayError) {
         // ✅ SOFT-FAIL: Gateway não disponível, continua sem ele

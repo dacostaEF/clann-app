@@ -60,10 +60,10 @@ class KeyExchangeService {
   /**
    * Inicia o fluxo de JOIN como joiner
    * @param {string} inviteCode - Código de convite
-   * @param {number} clannId - ID do CLANN
-   * @returns {Promise<Object>} Resultado do join com groupKey
+   * @param {number|null} clannId - ID do CLANN (opcional, null para convidado novo)
+   * @returns {Promise<Object>} Resultado do join com groupKey e clannId
    */
-  async initiateJoin(inviteCode, clannId) {
+  async initiateJoin(inviteCode, clannId = null) {
     // 1. Carregar dados do meu Totem
     const myTotem = await loadTotemSecure();
     if (!myTotem || !myTotem.totemId || !myTotem.publicKey) {
@@ -74,7 +74,8 @@ class KeyExchangeService {
     const requestId = generateRequestId();
 
     // 3. Registrar request pendente (para validação de replay)
-    const resultPromise = registerPendingRequest(requestId);
+    // Armazenar inviteCode para criar CLANN após JOIN_ACCEPT
+    const resultPromise = registerPendingRequest(requestId, inviteCode);
 
     // 4. Enviar JOIN_REQUEST via Gateway
     // 🚫 NÃO INCLUIR 'clannId' AQUI. O fundador o identificará pelo inviteCode.
@@ -135,13 +136,18 @@ class KeyExchangeService {
         myTotem.privateKey
       );
 
-      // 6. Enviar JOIN_ACCEPT
+      // 6. Enviar JOIN_ACCEPT com dados do CLANN para o joiner criar localmente
       this.gatewayClient.sendJoinAccept({
         clannId: clan.id.toString(),
         toTotemId: joinerTotemId,
         fromTotemId: myTotem.totemId,
         encryptedGroupKey,
-        requestId
+        requestId,
+        // ✅ Dados do CLANN para o joiner criar localmente
+        clanName: clan.name,
+        inviteCode: inviteCode,
+        clanDescription: clan.description || null,
+        clanIcon: clan.icon || '🏛️'
       });
 
       console.log(`[KeyExchange] JOIN_ACCEPT enviado para ${joinerTotemId.substring(0, 10)}...`);
@@ -156,7 +162,16 @@ class KeyExchangeService {
    * @param {Object} payload - Dados do JOIN_ACCEPT
    */
   async handleJoinAccept(payload) {
-    const { clannId, fromTotemId, encryptedGroupKey, requestId } = payload;
+    const { 
+      clannId, 
+      fromTotemId, 
+      encryptedGroupKey, 
+      requestId,
+      clanName,
+      inviteCode,
+      clanDescription,
+      clanIcon
+    } = payload;
 
     try {
       // 1. Validar requestId (proteção contra replay)
@@ -188,16 +203,51 @@ class KeyExchangeService {
         myTotem.privateKey
       );
 
-      // 5. Salvar groupKey no KeyManager
-      await KeyManager.saveGroupKey(parseInt(clannId), groupKey);
+      // 5. ✅ CRIAR CLANN LOCALMENTE (após JOIN_ACCEPT)
+      // Verificar se CLANN já existe localmente (caso raro de rejoin)
+      let clan = await ClanStorage.getClanByInviteCode(inviteCode);
+      
+      if (!clan) {
+        // Criar CLANN localmente com dados recebidos do fundador
+        const clanData = {
+          name: clanName || `CLANN ${clannId}`,
+          description: clanDescription || '',
+          icon: clanIcon || '🏛️',
+          privacy: 'public',
+          invite_code: inviteCode, // ✅ Usar inviteCode recebido do fundador
+          external_clann_id: clannId // Armazenar ID do fundador como referência
+        };
+        
+        // Criar CLANN localmente (sem fundador específico, pois é entrada via convite)
+        clan = await ClanStorage.createClanForInvite(clanData, myTotem.totemId);
+        
+        // Atualizar o ID local para corresponder ao clannId recebido (se necessário)
+        // O clannId recebido é o ID do fundador, mas localmente temos um ID diferente
+        // Por enquanto, mantemos o ID local e armazenamos o clannId como referência
+      }
+      
+      // 6. Adicionar como membro (se ainda não for)
+      const totemId = myTotem.totemId;
+      const userClans = await ClanStorage.getUserClans(totemId);
+      const isMember = userClans.some(uc => uc.id === clan.id);
+      
+      if (!isMember) {
+        await ClanStorage.addMember(clan.id, totemId, 'member');
+        // Recarregar o CLANN para ter os dados atualizados
+        clan = await ClanStorage.getClanById(clan.id);
+      }
 
-      // 6. Resolver o request pendente
+      // 7. Salvar groupKey no KeyManager (usando ID local do CLANN)
+      await KeyManager.saveGroupKey(clan.id, groupKey);
+
+      // 8. Resolver o request pendente com dados do CLANN criado
       resolvePendingRequest(requestId, {
-        clannId,
-        groupKeyReceived: true
+        clannId: clan.id.toString(), // ID local do CLANN criado
+        groupKeyReceived: true,
+        clan: clan
       });
 
-      console.log(`[KeyExchange] GroupKey recebida e salva para CLANN ${clannId}`);
+      console.log(`[KeyExchange] GroupKey recebida e CLANN criado localmente: ${clan.id}`);
 
     } catch (error) {
       console.error('[KeyExchange] Erro ao processar JOIN_ACCEPT:', error);

@@ -8,6 +8,7 @@ import { updateLastMessage } from './MessageCache';
 import { compressText, decompressText } from '../utils/compression';
 import { createGatewayClient } from '../services/gateway';
 import { loadTotemSecure } from '../storage/secureStore';
+import logger from '../utils/logger';
 
 /**
  * Lógica de negócio para mensagens dos CLANNs
@@ -63,46 +64,234 @@ class MessagesManager {
   /**
    * Inicializar conexão com o Gateway após criação do Totem
    * @param {string|number} clannId - ID do CLANN (opcional, para conexão específica)
+   * @param {Object} options - Opções de inicialização
+   * @param {boolean} options.required - Se true, lança erro em caso de falha. Se false, retorna false silenciosamente
+   * @returns {Promise<boolean>} true se conectado com sucesso, false se falhou e não é obrigatório
    */
-  async initializeGateway(clannId = null) {
-    try {
-      console.log('🚀 Inicializando Gateway CLANN...');
+  async initializeGateway(clannId = null, options = { required: false }) {
+    // === ✅ LOG DE ENTRADA IRREFUTÁVEL ===
+    console.log('🔴 [GATEWAY-DEBUG-ENTRY] FUNÇÃO CHAMADA. clannId:', clannId, 'required:', options.required);
+    console.log('🔴 [GATEWAY-DEBUG-ENTRY] Tipo de clannId:', typeof clannId, 'Valor:', clannId);
+    console.log('🔴 [GATEWAY-DEBUG-ENTRY] Tipo de options:', typeof options, 'Valor:', JSON.stringify(options));
+    
+    // Log antes da primeira validação crítica
+    console.log('🔴 [GATEWAY-DEBUG-STEP1] Antes de qualquer validação...');
+    console.log('🔴 [GATEWAY-DEBUG-STEP1a] __DEV__:', __DEV__);
+    console.log('🔴 [GATEWAY-DEBUG-STEP1b] process existe?', typeof process !== 'undefined');
+    console.log('🔴 [GATEWAY-DEBUG-STEP1c] process.env existe?', typeof process !== 'undefined' && !!process?.env);
 
-      // 1. Obter dados do Totem
-      const totemData = await loadTotemSecure();
-      if (!totemData || !totemData.totemId || !totemData.publicKey) {
-        throw new Error('Totem não encontrado ou incompleto');
+    try {
+      console.log('🔴 [GATEWAY-DEBUG-STEP1d] Entrando no bloco try...');
+
+      // Verificar se logger está disponível antes de usar
+      console.log('🔍 [GATEWAY-STEP-0e] Verificando logger...');
+      if (logger?.gateway) {
+        logger.gateway('Inicializando Gateway', { clannId });
+        console.log('🔍 [GATEWAY-STEP-0f] Logger usado com sucesso');
+      } else {
+        console.warn('⚠️ [GATEWAY-STEP-0f] logger.gateway indisponível, continuando sem logger');
       }
 
-      // 2. Criar cliente usando a factory
-      // Validar URL do Gateway - deve vir exclusivamente de EXPO_PUBLIC_GATEWAY_URL
-      const gatewayUrl = process.env.EXPO_PUBLIC_GATEWAY_URL;
+      // ✅ ETAPA 1: VALIDAÇÃO DA URL (PONTO CRÍTICO DE FALHA)
+      console.log('🔍 [GATEWAY-STEP-1] Validando URL do Gateway...');
+      const envValue = typeof process !== 'undefined' && process.env 
+        ? process.env.EXPO_PUBLIC_GATEWAY_URL 
+        : undefined;
+      console.log('🔍 [GATEWAY-STEP-1a] envValue:', envValue || 'undefined');
+      
+      const gatewayUrl = envValue;
+      console.log('🔍 [GATEWAY-STEP-1b] gatewayUrl final:', gatewayUrl || 'NENHUMA');
       
       if (!gatewayUrl) {
-        console.error('[MessagesManager] EXPO_PUBLIC_GATEWAY_URL não definida');
-        throw new Error('Gateway URL ausente: EXPO_PUBLIC_GATEWAY_URL deve ser definida no .env');
+        console.error('❌ [GATEWAY-STEP-1c] EARLY RETURN: gatewayUrl é undefined ou vazia.');
+        const error = new Error('Gateway URL ausente: EXPO_PUBLIC_GATEWAY_URL deve ser definida no .env');
+        if (options.required) {
+          throw error;
+        }
+        return false; // ⚠️ Ponto de retorno antecipado
+      }
+      console.log('🔍 [GATEWAY-STEP-1d] URL válida:', gatewayUrl);
+      
+      // 🌐 VALIDAÇÃO: Detectar URLs inválidas para LAN
+      if (__DEV__) {
+        const invalidPatterns = [
+          'localhost',
+          '127.0.0.1',
+          '0.0.0.0',
+          'ws://localhost',
+          'ws://127.0.0.1',
+          'ws://0.0.0.0'
+        ];
+        
+        const isInvalid = invalidPatterns.some(pattern => gatewayUrl.includes(pattern));
+        if (isInvalid) {
+          console.warn('⚠️ [GATEWAY-STEP-1e] Gateway URL pode ser inválida para LAN:', gatewayUrl);
+          console.warn('   Use o IP real da sua máquina: ws://192.168.x.x:8080');
+        } else {
+          console.log('🔍 [GATEWAY-STEP-1e] URL parece válida para LAN');
+        }
       }
 
-      this.gatewayClient = createGatewayClient({
-        gatewayUrl,
-      });
+      // ✅ ETAPA 2: OBTENÇÃO DO TOTEM (OUTRO PONTO CRÍTICO)
+      console.log('🔍 [GATEWAY-STEP-2] Obtendo dados do Totem...');
+      let totemData;
+      try {
+        totemData = await loadTotemSecure();
+        console.log('🔍 [GATEWAY-STEP-2a] Totem obtido?', totemData ? 'SIM' : 'NÃO');
+        console.log('🔍 [GATEWAY-STEP-2b] TotemId:', totemData?.totemId || 'null/undefined');
+        console.log('🔍 [GATEWAY-STEP-2c] PublicKey existe?', totemData?.publicKey ? 'SIM' : 'NÃO');
+      } catch (error) {
+        console.error('❌ [GATEWAY-STEP-2d] ERRO ao obter Totem:', error.message);
+        console.error('❌ [GATEWAY-STEP-2e] Stack:', error.stack);
+        if (options.required) {
+          throw error;
+        }
+        return false; // ⚠️ Outro ponto de retorno antecipado
+      }
 
-      // 3. Conectar com credenciais do Totem e clannId (se fornecido)
-      await this.gatewayClient.connect(totemData.totemId, totemData.publicKey, clannId);
+      if (!totemData || !totemData.totemId || !totemData.publicKey) {
+        console.warn('⚠️ [GATEWAY-STEP-2f] Totem incompleto:', {
+          temTotemData: !!totemData,
+          temTotemId: !!totemData?.totemId,
+          temPublicKey: !!totemData?.publicKey
+        });
+        
+        if (options.required) {
+          throw new Error('Totem não encontrado ou incompleto');
+        }
+        console.warn('⚠️ [GATEWAY-STEP-2g] Continuando sem totemId válido (pode falhar na conexão)');
+      } else {
+        console.log('🔍 [GATEWAY-STEP-2h] Totem válido, prosseguindo...');
+      }
 
-      console.log('✅ Gateway conectado e autenticado');
+      // ✅ ETAPA 3: CRIAÇÃO DO GATEWAYCLIENT (O OBJETIVO FINAL)
+      console.log('🔍 [GATEWAY-STEP-3] VERIFICANDO/CRIANDO gatewayClient...');
+      console.log('🔍 [GATEWAY-STEP-3a] gatewayClient atual existe?', this.gatewayClient ? 'SIM' : 'NÃO');
+      
+      if (!this.gatewayClient) {
+        console.log('🔧 [GATEWAY-STEP-3b] INSTANCIANDO NOVO GatewayClient AGORA.');
+        console.log('🔧 [GATEWAY-STEP-3c] Parâmetros:', { 
+          gatewayUrl, 
+          clannId, 
+          totemId: totemData?.totemId || 'null' 
+        });
+        try {
+          this.gatewayClient = createGatewayClient({
+            gatewayUrl,
+          });
+          console.log('✅ [GATEWAY-STEP-3d] GatewayClient INSTANCIADO com sucesso.');
+          console.log('✅ [GATEWAY-STEP-3e] gatewayClient é null?', this.gatewayClient ? 'NÃO' : 'SIM');
+          console.log('✅ [GATEWAY-STEP-3f] Tipo do gatewayClient:', typeof this.gatewayClient);
+        } catch (error) {
+          console.error('❌ [GATEWAY-STEP-3g] ERRO ao instanciar GatewayClient:', error.message);
+          console.error('❌ [GATEWAY-STEP-3h] Stack:', error.stack);
+          throw error; // Não tem fallback aqui
+        }
+      } else {
+        console.log('🔧 [GATEWAY-STEP-3b] Reutilizando gatewayClient existente.');
+      }
 
-      // 4. Configurar handler para mensagens recebidas
-      this.setupGatewayHandlers();
+      // ✅ ETAPA 4: CONEXÃO (SE O CLIENTE JÁ EXISTIR E TOTEM VÁLIDO)
+      console.log('🔍 [GATEWAY-STEP-4] Verificando se precisa conectar...');
+      console.log('🔍 [GATEWAY-STEP-4a] isGatewayConnected atual:', this.isGatewayConnected);
+      console.log('🔍 [GATEWAY-STEP-4b] gatewayClient existe?', this.gatewayClient ? 'SIM' : 'NÃO');
+      console.log('🔍 [GATEWAY-STEP-4c] totemData válido?', (totemData && totemData.totemId && totemData.publicKey) ? 'SIM' : 'NÃO');
+      
+      if (this.gatewayClient && !this.isGatewayConnected) {
+        // Só tenta conectar se tiver totemData válido
+        if (totemData && totemData.totemId && totemData.publicKey) {
+          console.log('🔌 [GATEWAY-STEP-4d] Tentando conectar...');
+          console.log('🔌 [GATEWAY-STEP-4e] Parâmetros de conexão:', {
+            totemId: totemData.totemId.substring(0, 8) + '...',
+            publicKey: totemData.publicKey ? 'existe' : 'null',
+            clannId: clannId || 'null'
+          });
+          
+          try {
+            await this.gatewayClient.connect(
+              totemData.totemId, 
+              totemData.publicKey, 
+              clannId
+            );
+            this.isGatewayConnected = true;
+            console.log('✅ [GATEWAY-STEP-4f] Conexão ESTABELECIDA com sucesso.');
+          } catch (error) {
+            console.error('❌ [GATEWAY-STEP-4g] ERRO na conexão:', error.message);
+            console.error('❌ [GATEWAY-STEP-4h] Stack:', error.stack);
+            this.isGatewayConnected = false;
+            // Não joga o cliente fora! Mantém a instância.
+            if (options.required) {
+              throw error;
+            }
+            console.warn('⚠️ [GATEWAY-STEP-4i] Conexão falhou, mas gatewayClient mantido para tentativas futuras');
+          }
+        } else {
+          console.warn('⚠️ [GATEWAY-STEP-4d] TotemData inválido, não é possível conectar agora.');
+          console.warn('⚠️ [GATEWAY-STEP-4e] gatewayClient foi criado, mas conexão será feita quando totemData estiver disponível.');
+          this.isGatewayConnected = false;
+        }
+      } else {
+        if (!this.gatewayClient) {
+          console.log('🔌 [GATEWAY-STEP-4d] Cliente não existe, não pode conectar.');
+        } else {
+          console.log('🔌 [GATEWAY-STEP-4d] Já conectado (isGatewayConnected = true).');
+        }
+      }
 
-      // 5. MVP 1: Inicializar KeyExchangeService
-      this.initKeyExchangeService();
+      // ETAPA 5: CONFIGURAÇÃO PÓS-CONEXÃO
+      if (this.isGatewayConnected) {
+        console.log('🔍 [GATEWAY-STEP-5] Configurando handlers pós-conexão...');
+        this.setupGatewayHandlers();
+        console.log('🔍 [GATEWAY-STEP-5a] Handlers configurados');
 
-      this.isGatewayConnected = true;
+        // MVP 1: Inicializar KeyExchangeService
+        console.log('🔍 [GATEWAY-STEP-5b] Inicializando KeyExchangeService...');
+        this.initKeyExchangeService();
+        console.log('🔍 [GATEWAY-STEP-5c] KeyExchangeService inicializado');
+      } else {
+        console.warn('⚠️ [GATEWAY-STEP-5] Gateway não conectado, pulando configuração de handlers');
+      }
+
+      console.log('✅ [GATEWAY-FINAL] initializeGateway concluído.');
+      console.log('✅ [GATEWAY-FINALa] isGatewayConnected:', this.isGatewayConnected);
+      console.log('✅ [GATEWAY-FINALb] gatewayClient existe?', this.gatewayClient ? 'SIM' : 'NÃO');
+      return this.isGatewayConnected;
     } catch (error) {
-      console.error('❌ Falha ao inicializar Gateway:', error);
+      // === ✅ LOG COMPLETO E EXPLÍCITO DO ERRO ===
+      console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] ERRO COMPLETO NA INICIALIZAÇÃO:');
+      console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] Mensagem:', error?.message || 'SEM MENSAGEM');
+      console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] Stack:', error?.stack || 'SEM STACK');
+      console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] Tipo:', typeof error);
+      console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] String:', error?.toString() || 'SEM toString()');
+      console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] Nome:', error?.name || 'SEM NOME');
+      console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] ClannId:', clannId);
+      console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] Required:', options.required);
+      console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] gatewayClient existe?', !!this.gatewayClient);
+      
+      // Tentar extrair mais informações do erro
+      if (error) {
+        try {
+          console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] Error completo (JSON):', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+        } catch (e) {
+          console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] Não foi possível serializar erro:', e.message);
+        }
+      }
+      
       this.isGatewayConnected = false;
-      // Não lança erro - Gateway é opcional por enquanto
+
+      // ⚠️ IMPORTANTE: NÃO destruir o gatewayClient em caso de erro!
+      // Mantém a instância para tentativas futuras ou uso em modo offline
+      // this.gatewayClient permanece disponível mesmo se desconectado
+
+      // Se for obrigatório, lança erro para o chamador tratar
+      if (options.required) {
+        console.error('❌❌❌ [GATEWAY-ERROR-DETAILS] Erro é obrigatório, RELANÇANDO.');
+        throw error; // Relança o erro original
+      }
+
+      // Se não for obrigatório, retorna false silenciosamente
+      console.warn('⚠️ [GATEWAY] Erro não obrigatório, retornando false.');
+      return false;
     }
   }
 
@@ -247,24 +436,53 @@ class MessagesManager {
    * Registrar handler para mensagens de um Clann específico
    * ✅ Evita múltiplos registros para o mesmo clannId
    * ✅ Garante que Gateway está conectado com clannId correto
+   * ✅ Verificação de segurança contra null
    */
   async registerClannGatewayHandler(clanId) {
     const normalizedClanId = clanId.toString();
 
+    // ✅ VERIFICAÇÃO CRÍTICA DE SEGURANÇA
+    if (!this.gatewayClient) {
+      console.warn('⚠️ [Gateway] gatewayClient é null ao tentar registrar handler. Inicialização pode estar incompleta.');
+      console.warn('⚠️ [Gateway] Tentando inicializar Gateway sob demanda...');
+      
+      // Tentar inicializar sob demanda
+      try {
+        const success = await this.initializeGateway(normalizedClanId, { required: false });
+        if (!success || !this.gatewayClient) {
+          console.warn('⚠️ [Gateway] Não foi possível inicializar Gateway. Handler não registrado.');
+          return false;
+        }
+      } catch (error) {
+        console.warn('⚠️ [Gateway] Erro ao inicializar Gateway sob demanda:', error.message);
+        return false;
+      }
+    }
+
     // ✅ Verificar se já está registrado (evita duplicatas)
     if (this.registeredGatewayHandlers.has(normalizedClanId)) {
       console.log(`📡 Handler já registrado para CLANN ${normalizedClanId}`);
-      return null;
+      return true;
     }
 
     // Se Gateway não está disponível, inicializar com clannId
     if (!this.isGatewayAvailable()) {
       try {
-        await this.initializeGateway(normalizedClanId);
+        const success = await this.initializeGateway(normalizedClanId, { required: false });
+        if (!success || !this.gatewayClient) {
+          console.warn('⚠️ Gateway não disponível, não é possível registrar handler');
+          return false;
+        }
       } catch (error) {
         console.warn('⚠️ Gateway não disponível, não é possível registrar handler:', error.message);
-        return null;
+        return false;
       }
+    }
+
+    // ✅ Verificação final antes de usar
+    if (!this.gatewayClient || typeof this.gatewayClient.registerClannHandler !== 'function') {
+      console.error('❌ [Gateway] gatewayClient inválido ou método registerClannHandler não existe');
+      return false;
     }
 
     // Registrar handler no GatewayClient

@@ -17,15 +17,49 @@ import {
   DELIVERY_STATUS,
 } from './gatewayConstants';
 import { GatewayValidators } from './GatewayValidators';
+import logger from '../../utils/logger';
 
 export class GatewayClient {
   constructor(options = {}) {
     // Validar URL do Gateway - deve vir exclusivamente de EXPO_PUBLIC_GATEWAY_URL
-    const gatewayUrl = options.gatewayUrl || process.env.EXPO_PUBLIC_GATEWAY_URL;
+    const envValue = typeof process !== 'undefined' && process.env 
+      ? process.env.EXPO_PUBLIC_GATEWAY_URL 
+      : undefined;
+    
+    const gatewayUrl = options.gatewayUrl || envValue;
+    
+    // 🌐 LOG DE DIAGNÓSTICO (DEV)
+    if (__DEV__) {
+      console.log('🌐 [DIAGNÓSTICO] GatewayClient constructor:', {
+        optionsGatewayUrl: options.gatewayUrl || 'não fornecido',
+        envValue: envValue || 'não definido',
+        gatewayUrlFinal: gatewayUrl || 'NENHUMA',
+        temProcess: typeof process !== 'undefined',
+        temEnv: typeof process !== 'undefined' && !!process.env
+      });
+    }
     
     if (!gatewayUrl) {
       console.error('[GatewayClient] EXPO_PUBLIC_GATEWAY_URL não definida');
       throw new Error('Gateway URL ausente: EXPO_PUBLIC_GATEWAY_URL deve ser definida no .env');
+    }
+    
+    // 🌐 VALIDAÇÃO: Detectar URLs inválidas para LAN
+    if (__DEV__ && gatewayUrl) {
+      const invalidPatterns = [
+        'localhost',
+        '127.0.0.1',
+        '0.0.0.0',
+        'ws://localhost',
+        'ws://127.0.0.1',
+        'ws://0.0.0.0'
+      ];
+      
+      const isInvalid = invalidPatterns.some(pattern => gatewayUrl.includes(pattern));
+      if (isInvalid) {
+        console.warn('⚠️ [DIAGNÓSTICO] Gateway URL pode ser inválida para LAN:', gatewayUrl);
+        console.warn('   Use o IP real da sua máquina: ws://192.168.x.x:8080');
+      }
     }
 
     // Configuração injetável
@@ -82,17 +116,36 @@ export class GatewayClient {
       throw new Error('totemId e publicKey são obrigatórios');
     }
 
+    logger.gateway('Iniciando conexão WebSocket', { 
+      totemId: totemId.substring(0, 8) + '...',
+      hasClannId: !!clannId 
+    });
+
     this.totemId = totemId;
     this.publicKey = publicKey;
     this.currentClannId = clannId;
 
     return new Promise((resolve, reject) => {
+      const connectStartTime = Date.now();
       // Construir URL com clannId e deviceId na query string (se fornecido)
       let wsUrl = this.config.gatewayUrl;
       if (clannId) {
         const separator = wsUrl.includes('?') ? '&' : '?';
         wsUrl = `${wsUrl}${separator}clannId=${encodeURIComponent(clannId)}&deviceId=${encodeURIComponent(totemId)}`;
       }
+
+      // 🌐 LOG DE DIAGNÓSTICO OBRIGATÓRIO (DEV)
+      const envValue = typeof process !== 'undefined' && process.env 
+        ? process.env.EXPO_PUBLIC_GATEWAY_URL 
+        : 'no-env';
+      
+      console.log('🌐 [DIAGNÓSTICO GATEWAY URL]', {
+        urlUsada: wsUrl,
+        origem: envValue,
+        temProcess: typeof process !== 'undefined',
+        temEnv: typeof process !== 'undefined' && !!process.env,
+        configGatewayUrl: this.config.gatewayUrl
+      });
 
       console.log(`🔗 Conectando ao Gateway: ${wsUrl}`);
 
@@ -103,6 +156,8 @@ export class GatewayClient {
       // ==================== EVENT HANDLERS ====================
 
       this.ws.onopen = () => {
+        const openDuration = Date.now() - connectStartTime;
+        logger.gateway('WebSocket conectado', { duration: `${openDuration}ms` });
         console.log('✅ WebSocket conectado. Autenticando...');
         this.isConnected = true;
         this.metrics.connectionTime = Date.now();
@@ -114,6 +169,7 @@ export class GatewayClient {
         };
 
         this.ws.send(JSON.stringify(authMessage));
+        logger.gateway('Credenciais de autenticação enviadas');
         console.log('🔑 Credenciais enviadas para autenticação');
 
         // Iniciar ping (keep-alive)
@@ -127,6 +183,15 @@ export class GatewayClient {
 
       this.ws.onerror = (error) => {
         console.error('❌ Erro WebSocket:', error);
+        // 🌐 LOG DE DIAGNÓSTICO: Erro de conexão
+        if (__DEV__) {
+          console.error('🌐 [DIAGNÓSTICO] WebSocket error:', {
+            url: wsUrl,
+            error: error.message || error.toString(),
+            tipo: 'conexão_falhou',
+            envValue: envValue || 'não definido'
+          });
+        }
         this.notifyErrorHandlers(error);
         reject(error);
       };
@@ -261,6 +326,15 @@ export class GatewayClient {
   }
 
   handleAuthSuccess(payload) {
+    const authDuration = this.metrics.connectionTime 
+      ? Date.now() - this.metrics.connectionTime 
+      : null;
+    
+    logger.gateway('Autenticação bem-sucedida', { 
+      totemId: this.totemId.substring(0, 8) + '...',
+      duration: authDuration ? `${authDuration}ms` : 'N/A'
+    });
+    
     console.log(`🎉 Autenticado como Totem: ${this.totemId.substring(0, 15)}...`);
     this.isAuthenticated = true;
     this.reconnectAttempts = 0;
@@ -270,6 +344,7 @@ export class GatewayClient {
       try {
         handler({ type: 'connected', totemId: this.totemId });
       } catch (error) {
+        logger.error('Gateway', 'Erro no status handler', error);
         console.error('Erro no status handler:', error);
       }
     });
@@ -398,9 +473,19 @@ export class GatewayClient {
 
   /**
    * Envia JOIN_ACCEPT para o joiner (fundador/admin)
-   * @param {Object} params - { clannId, toTotemId, fromTotemId, encryptedGroupKey, requestId }
+   * @param {Object} params - { clannId, toTotemId, fromTotemId, encryptedGroupKey, requestId, clanName, inviteCode, clanDescription, clanIcon }
    */
-  sendJoinAccept({ clannId, toTotemId, fromTotemId, encryptedGroupKey, requestId }) {
+  sendJoinAccept({ 
+    clannId, 
+    toTotemId, 
+    fromTotemId, 
+    encryptedGroupKey, 
+    requestId,
+    clanName,
+    inviteCode,
+    clanDescription,
+    clanIcon
+  }) {
     if (!this.isConnected || !this.isAuthenticated) {
       throw new Error('Gateway não está conectado/autenticado');
     }
@@ -412,7 +497,12 @@ export class GatewayClient {
         toTotemId,
         fromTotemId,
         encryptedGroupKey,
-        requestId
+        requestId,
+        // ✅ Dados do CLANN para o joiner criar localmente
+        clanName,
+        inviteCode,
+        clanDescription,
+        clanIcon
       }
     };
 
